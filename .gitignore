@@ -1,0 +1,31 @@
+# Renombrar a .gitignore en la raíz del repo
+
+# Entorno / secretos
+.env
+.env.*
+!.env.example
+*.p12
+*.pem
+certbot/
+
+# Node
+node_modules/
+dist/
+build/
+*.log
+
+# Python (microservicio fiscal)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Datos / respaldos
+dbdata/
+*.sql.gz
+backups/
+
+# Editor / SO
+.DS_Store
+.idea/
+.vscode/

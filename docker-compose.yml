@@ -1,0 +1,76 @@
+# MundoTec ERP — stack de contenedores (plantilla)
+# Uso: copia este archivo por entorno (p. ej. /srv/erp-prod y /srv/erp-dev) con su propio .env.
+# La base de datos NO expone puertos al host: solo es accesible por la red interna de Docker.
+
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ./db/erp_schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
+    networks: [backend]
+    # Sin "ports": la DB queda privada, solo visible para los demás contenedores.
+
+  api:
+    build: ./apps/api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      NODE_ENV: ${NODE_ENV}
+    depends_on: [db]
+    networks: [backend, frontend]
+
+  fiscal:
+    build: ./services/fiscal
+    restart: unless-stopped
+    environment:
+      HACIENDA_ENV: ${HACIENDA_ENV}        # stag | prod
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on: [db]
+    networks: [backend]
+    # Microservicio fiscal: interno, no se expone a internet.
+
+  web-erp:
+    build: ./apps/web-erp
+    restart: unless-stopped
+    networks: [frontend]
+
+  web-store:
+    build: ./apps/web-store
+    restart: unless-stopped
+    networks: [frontend]
+
+  nginx:
+    image: nginx:1.27
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on: [api, web-erp, web-store]
+    networks: [frontend]
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  dbdata:
+
+networks:
+  backend:
+    internal: true     # red privada: sin salida directa a internet
+  frontend:
