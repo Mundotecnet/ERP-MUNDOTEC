@@ -35,6 +35,7 @@ y la elección de ORM; espera mi visto bueno y continúa.
 ---
 
 ## Sprints siguientes (referencia, no para ahora)
+
 - Sprint 2: autenticación (HU-2.1–2.4) y multiempresa (HU-3.1, HU-3.3).
 - Sprint 3: roles/permisos (HU-4.1–4.4) y sucursales/almacenes (HU-3.2).
 - Sprint 4: catálogos (HU-5.1–5.5), shell de la app (HU-6.2) y parámetros (HU-6.3).
