@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+pnpm-lock.yaml
+db/erp_schema.sql
+*.docx
+
+# Archivos preexistentes que aún no se han pasado por Prettier.
+# Se reformatearán en su propio PR para no mezclar cambios.
+docker-compose.yml
+docs/PRIMERA_TAREA_Claude_Code.md

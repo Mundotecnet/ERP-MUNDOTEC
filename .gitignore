@@ -1,5 +1,3 @@
-# Renombrar a .gitignore en la raíz del repo
-
 # Entorno / secretos
 .env
 .env.*
@@ -8,11 +6,15 @@
 *.pem
 certbot/
 
-# Node
+# Node / pnpm
 node_modules/
 dist/
 build/
+coverage/
+.turbo/
 *.log
+.pnpm-store/
+*.tsbuildinfo
 
 # Python (microservicio fiscal)
 __pycache__/

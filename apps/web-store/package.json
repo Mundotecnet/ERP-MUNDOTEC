@@ -1,0 +1,27 @@
+{
+  "name": "@mundotec/web-store",
+  "version": "0.0.0",
+  "private": true,
+  "description": "MundoTec ERP — tienda pública (React + Vite).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"sin tests todavía\" && exit 0"
+  },
+  "dependencies": {
+    "@mundotec/shared": "workspace:*",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "typescript": "5.6.3",
+    "vite": "5.4.11"
+  }
+}
