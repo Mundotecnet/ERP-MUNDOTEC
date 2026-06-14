@@ -1,0 +1,38 @@
+# MundoTec ERP — entorno local de desarrollo.
+#
+# Sólo levanta PostgreSQL con el puerto 5432 expuesto al host. El api, frontends
+# y demás se corren en el host con hot reload (`pnpm --filter ... dev`/`start:dev`).
+#
+# Uso:
+#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml down            # mantiene los datos
+#   docker compose -f docker-compose.dev.yml down -v         # borra el volumen
+#
+# La DB se inicializa al primer arranque con db/erp_schema.sql (ejecutado por
+# postgres-entrypoint). Para regenerar el esquema desde cero: `down -v` y `up`.
+
+services:
+  db:
+    image: postgres:15
+    container_name: mundotec_erp_db_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mundotec_erp}
+      POSTGRES_USER: ${POSTGRES_USER:-erp_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-erp_dev_password}
+    ports:
+      # 5432 ya lo usa el PostgreSQL de producción de este host (mundotec-web,
+      # mundotec-networking). Usamos 5433 por defecto para el ERP en dev.
+      - '${POSTGRES_HOST_PORT:-5433}:5432'
+    volumes:
+      - dbdata_dev:/var/lib/postgresql/data
+      - ./db/erp_schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  dbdata_dev:

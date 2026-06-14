@@ -1,6 +1,19 @@
-# MundoTec ERP — stack de contenedores (plantilla)
+# MundoTec ERP — stack de contenedores (referencia de producción).
 # Uso: copia este archivo por entorno (p. ej. /srv/erp-prod y /srv/erp-dev) con su propio .env.
 # La base de datos NO expone puertos al host: solo es accesible por la red interna de Docker.
+#
+# Perfiles:
+#   (sin perfil)  → db + api (núcleo siempre encendido)
+#   fiscal        → microservicio FastAPI de factura electrónica (aún no implementado)
+#   frontend      → web-erp + web-store (sus Dockerfiles llegan en un PR posterior)
+#   edge          → nginx + certbot (reverse proxy + TLS automático)
+#
+# Ejemplos:
+#   docker compose up -d                                  # solo db + api
+#   docker compose --profile frontend --profile edge up -d
+#   docker compose --profile fiscal up -d
+#
+# Para desarrollo local con la DB expuesta al host usa docker-compose.dev.yml.
 
 services:
   db:
@@ -14,53 +27,74 @@ services:
       - dbdata:/var/lib/postgresql/data
       - ./db/erp_schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
     networks: [backend]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     # Sin "ports": la DB queda privada, solo visible para los demás contenedores.
 
   api:
-    build: ./apps/api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      API_PORT: ${API_PORT:-3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      NODE_ENV: ${NODE_ENV}
-    depends_on: [db]
+    depends_on:
+      db:
+        condition: service_healthy
     networks: [backend, frontend]
+    # El healthcheck del contenedor está definido en apps/api/Dockerfile (GET /health).
+    # Sin "ports": el acceso pasa por nginx (perfil edge) en producción.
 
   fiscal:
+    profiles: [fiscal]
     build: ./services/fiscal
     restart: unless-stopped
     environment:
-      HACIENDA_ENV: ${HACIENDA_ENV}        # stag | prod
+      HACIENDA_ENV: ${HACIENDA_ENV:-stag} # stag | prod
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-    depends_on: [db]
+    depends_on:
+      db:
+        condition: service_healthy
     networks: [backend]
-    # Microservicio fiscal: interno, no se expone a internet.
+    # Microservicio fiscal: interno, no se expone a internet. Sprint 1 no lo implementa.
 
   web-erp:
+    profiles: [frontend]
     build: ./apps/web-erp
     restart: unless-stopped
     networks: [frontend]
 
   web-store:
+    profiles: [frontend]
     build: ./apps/web-store
     restart: unless-stopped
     networks: [frontend]
 
   nginx:
+    profiles: [edge]
     image: nginx:1.27
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - '80:80'
+      - '443:443'
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
-    depends_on: [api, web-erp, web-store]
+    depends_on: [api]
     networks: [frontend]
 
   certbot:
+    profiles: [edge]
     image: certbot/certbot
     volumes:
       - ./certbot/conf:/etc/letsencrypt
@@ -72,5 +106,5 @@ volumes:
 
 networks:
   backend:
-    internal: true     # red privada: sin salida directa a internet
+    internal: true # red privada: sin salida directa a internet
   frontend:

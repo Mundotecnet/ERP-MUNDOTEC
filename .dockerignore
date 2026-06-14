@@ -1,0 +1,51 @@
+# Git / VCS
+.git
+.gitignore
+.gitattributes
+
+# Editor / SO
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# Node / pnpm — siempre se reinstala dentro del build
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/.turbo
+**/*.tsbuildinfo
+**/*.log
+.pnpm-store
+
+# Secretos y entornos
+.env
+.env.*
+!.env.example
+*.p12
+*.pem
+certbot
+
+# Docs grandes / PDFs / docx
+docs/*.docx
+*.pdf
+
+# Backups
+backups
+*.sql.gz
+
+# Otros workspaces que no necesita el build del api
+apps/web-erp
+apps/web-store
+services/fiscal
+
+# CI / despliegue (no van dentro del contenedor)
+.github
+nginx.conf
+install_server.sh
+docker-compose*.yml
+
+# Tests no se ejecutan dentro del runtime
+**/*.spec.ts
+**/*.test.ts
