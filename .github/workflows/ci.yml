@@ -71,3 +71,47 @@ jobs:
           load: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  db-drift:
+    name: DB drift check (Prisma vs erp_schema.sql)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: erp_app
+          POSTGRES_PASSWORD: erp_dev_password
+          POSTGRES_DB: mundotec_erp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_app -d mundotec_erp"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.3
+          run_install: false
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Drift check
+        env:
+          DATABASE_URL: postgres://erp_app:erp_dev_password@localhost:5432/mundotec_erp
+        run: pnpm db:check-drift

@@ -1,0 +1,238 @@
+// MundoTec ERP — modelo Prisma del núcleo + catálogos base (Sprint 1).
+//
+// IMPORTANTE: la fuente de verdad del modelo es /db/erp_schema.sql.
+// Cualquier cambio aquí debe reflejarse allí y viceversa; el script
+// `pnpm db:check-drift` valida que las tablas modeladas coincidan.
+//
+// Convenciones:
+//   - snake_case en DB, camelCase en TS vía @map/@@map.
+//   - BIGINT GENERATED ALWAYS AS IDENTITY → BigInt @id @default(autoincrement()).
+//   - NUMERIC(p,s) → Decimal @db.Decimal(p, s).
+//   - TIMESTAMPTZ → DateTime @db.Timestamptz; DATE → DateTime @db.Date.
+//   - JSONB → Json @db.JsonB.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = []
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// 1. NÚCLEO Y SEGURIDAD
+// ============================================================================
+
+model Company {
+  id           BigInt    @id @default(autoincrement())
+  legalName    String    @map("legal_name") @db.VarChar(200)
+  tradeName    String?   @map("trade_name") @db.VarChar(200)
+  taxId        String    @unique @map("tax_id") @db.VarChar(50)
+  currencyCode String    @default("USD") @map("currency_code") @db.Char(3)
+  address      String?   @db.VarChar(300)
+  phone        String?   @db.VarChar(50)
+  email        String?   @db.VarChar(150)
+  logoUrl      String?   @map("logo_url") @db.VarChar(300)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  branches          Branch[]
+  users             AppUser[]
+  roles             Role[]
+  taxes             Tax[]
+  departments       Department[]
+  productCategories ProductCategory[]
+  customerCategories CustomerCategory[]
+
+  @@map("company")
+}
+
+model Branch {
+  id        BigInt   @id @default(autoincrement())
+  companyId BigInt   @map("company_id")
+  code      String   @db.VarChar(20)
+  name      String   @db.VarChar(150)
+  address   String?  @db.VarChar(300)
+  phone     String?  @db.VarChar(50)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, code])
+  @@map("branch")
+}
+
+model AppUser {
+  id            BigInt    @id @default(autoincrement())
+  companyId     BigInt    @map("company_id")
+  username      String    @db.VarChar(80)
+  email         String    @db.VarChar(150)
+  passwordHash  String    @map("password_hash") @db.VarChar(255)
+  fullName      String    @map("full_name") @db.VarChar(150)
+  isActive      Boolean   @default(true) @map("is_active")
+  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+  // Extensión sección 20.1 del erp_schema.sql (vendedores y comisiones).
+  isSalesperson Boolean   @default(false) @map("is_salesperson")
+  commissionPct Decimal   @default(0) @map("commission_pct") @db.Decimal(7, 4)
+
+  company   Company    @relation(fields: [companyId], references: [id])
+  userRoles UserRole[]
+  auditLogs AuditLog[]
+
+  @@unique([companyId, username])
+  @@unique([companyId, email])
+  @@map("app_user")
+}
+
+model Role {
+  id          BigInt  @id @default(autoincrement())
+  companyId   BigInt  @map("company_id")
+  name        String  @db.VarChar(80)
+  description String? @db.VarChar(250)
+
+  company         Company          @relation(fields: [companyId], references: [id])
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@unique([companyId, name])
+  @@map("role")
+}
+
+model Permission {
+  id          BigInt  @id @default(autoincrement())
+  code        String  @unique @db.VarChar(100)
+  module      String  @db.VarChar(50)
+  description String? @db.VarChar(250)
+
+  rolePermissions RolePermission[]
+
+  @@map("permission")
+}
+
+model RolePermission {
+  roleId       BigInt @map("role_id")
+  permissionId BigInt @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permission")
+}
+
+model UserRole {
+  userId BigInt @map("user_id")
+  roleId BigInt @map("role_id")
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_role")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt?  @map("user_id")
+  entity    String   @db.VarChar(80)
+  entityId  BigInt?  @map("entity_id")
+  action    String   @db.VarChar(20) // INSERT | UPDATE | DELETE
+  oldValues Json?    @map("old_values") @db.JsonB
+  newValues Json?    @map("new_values") @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user AppUser? @relation(fields: [userId], references: [id])
+
+  @@index([entity, entityId], map: "idx_audit_entity")
+  @@map("audit_log")
+}
+
+// ============================================================================
+// 2. CATÁLOGOS COMPARTIDOS
+// ============================================================================
+
+model Currency {
+  code   String  @id @db.Char(3)
+  name   String  @db.VarChar(60)
+  symbol String? @db.VarChar(6)
+
+  exchangeRates ExchangeRate[]
+
+  @@map("currency")
+}
+
+model ExchangeRate {
+  id           BigInt   @id @default(autoincrement())
+  currencyCode String   @map("currency_code") @db.Char(3)
+  rateDate     DateTime @map("rate_date") @db.Date
+  rate         Decimal  @db.Decimal(18, 6)
+
+  currency Currency @relation(fields: [currencyCode], references: [code])
+
+  @@unique([currencyCode, rateDate])
+  @@map("exchange_rate")
+}
+
+model Tax {
+  id        BigInt  @id @default(autoincrement())
+  companyId BigInt  @map("company_id")
+  name      String  @db.VarChar(60)
+  rate      Decimal @db.Decimal(7, 4)
+  isActive  Boolean @default(true) @map("is_active")
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@map("tax")
+}
+
+model UnitOfMeasure {
+  id   BigInt @id @default(autoincrement())
+  code String @unique @db.VarChar(10)
+  name String @db.VarChar(60)
+
+  @@map("unit_of_measure")
+}
+
+model ProductCategory {
+  id        BigInt  @id @default(autoincrement())
+  companyId BigInt  @map("company_id")
+  parentId  BigInt? @map("parent_id")
+  name      String  @db.VarChar(120)
+  isActive  Boolean @default(true) @map("is_active")
+
+  company  Company           @relation(fields: [companyId], references: [id])
+  parent   ProductCategory?  @relation("ProductCategoryHierarchy", fields: [parentId], references: [id])
+  children ProductCategory[] @relation("ProductCategoryHierarchy")
+
+  @@map("product_category")
+}
+
+model Department {
+  id        BigInt  @id @default(autoincrement())
+  companyId BigInt  @map("company_id")
+  name      String  @db.VarChar(80)
+  isActive  Boolean @default(true) @map("is_active")
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, name])
+  @@map("department")
+}
+
+model CustomerCategory {
+  id        BigInt @id @default(autoincrement())
+  companyId BigInt @map("company_id")
+  code      String @db.VarChar(5)
+  name      String @db.VarChar(80)
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, code])
+  @@map("customer_category")
+}
