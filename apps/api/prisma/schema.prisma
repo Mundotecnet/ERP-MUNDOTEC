@@ -69,24 +69,27 @@ model Branch {
 }
 
 model AppUser {
-  id            BigInt    @id @default(autoincrement())
-  companyId     BigInt    @map("company_id")
-  username      String    @db.VarChar(80)
-  email         String    @db.VarChar(150)
-  passwordHash  String    @map("password_hash") @db.VarChar(255)
-  fullName      String    @map("full_name") @db.VarChar(150)
-  isActive      Boolean   @default(true) @map("is_active")
-  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz
-  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+  id                  BigInt    @id @default(autoincrement())
+  companyId           BigInt    @map("company_id")
+  username            String    @db.VarChar(80)
+  email               String    @db.VarChar(150)
+  passwordHash        String    @map("password_hash") @db.VarChar(255)
+  fullName            String    @map("full_name") @db.VarChar(150)
+  isActive            Boolean   @default(true) @map("is_active")
+  lastLoginAt         DateTime? @map("last_login_at") @db.Timestamptz
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until") @db.Timestamptz
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
   // Extensión sección 20.1 del erp_schema.sql (vendedores y comisiones).
-  isSalesperson Boolean   @default(false) @map("is_salesperson")
-  commissionPct Decimal   @default(0) @map("commission_pct") @db.Decimal(7, 4)
+  isSalesperson       Boolean   @default(false) @map("is_salesperson")
+  commissionPct       Decimal   @default(0) @map("commission_pct") @db.Decimal(7, 4)
 
-  company   Company    @relation(fields: [companyId], references: [id])
-  userRoles UserRole[]
-  auditLogs AuditLog[]
+  company       Company        @relation(fields: [companyId], references: [id])
+  userRoles     UserRole[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
 
   @@unique([companyId, username])
   @@unique([companyId, email])
@@ -154,6 +157,22 @@ model AuditLog {
 
   @@index([entity, entityId], map: "idx_audit_entity")
   @@map("audit_log")
+}
+
+// HU-2.1 / HU-2.2 — refresh tokens stateful (revocables al hacer logout).
+model RefreshToken {
+  id         BigInt    @id @default(autoincrement())
+  userId     BigInt    @map("user_id")
+  jti        String    @unique @db.VarChar(64)
+  tokenHash  String    @map("token_hash") @db.VarChar(255)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_refresh_user")
+  @@map("refresh_token")
 }
 
 // ============================================================================
