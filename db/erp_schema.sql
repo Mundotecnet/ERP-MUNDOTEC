@@ -43,17 +43,19 @@ CREATE TABLE branch (
 );
 
 CREATE TABLE app_user (
-    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    company_id      BIGINT NOT NULL REFERENCES company(id),
-    username        VARCHAR(80)  NOT NULL,
-    email           VARCHAR(150) NOT NULL,
-    password_hash   VARCHAR(255) NOT NULL,
-    full_name       VARCHAR(150) NOT NULL,
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    last_login_at   TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at      TIMESTAMPTZ,
+    id                     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    company_id             BIGINT NOT NULL REFERENCES company(id),
+    username               VARCHAR(80)  NOT NULL,
+    email                  VARCHAR(150) NOT NULL,
+    password_hash          VARCHAR(255) NOT NULL,
+    full_name              VARCHAR(150) NOT NULL,
+    is_active              BOOLEAN NOT NULL DEFAULT TRUE,
+    last_login_at          TIMESTAMPTZ,
+    failed_login_attempts  INTEGER NOT NULL DEFAULT 0,         -- HU-2.1: contador para bloqueo
+    locked_until           TIMESTAMPTZ,                        -- HU-2.1: si > now(), login bloqueado
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at             TIMESTAMPTZ,
     UNIQUE (company_id, username),
     UNIQUE (company_id, email)
 );
@@ -96,6 +98,18 @@ CREATE TABLE audit_log (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_audit_entity ON audit_log(entity, entity_id);
+
+-- HU-2.1 / HU-2.2 — refresh tokens stateful (revocables al hacer logout).
+CREATE TABLE refresh_token (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+    jti             VARCHAR(64) NOT NULL UNIQUE,            -- id único del JWT refresh
+    token_hash      VARCHAR(255) NOT NULL,                  -- bcrypt del refresh emitido
+    expires_at      TIMESTAMPTZ NOT NULL,
+    revoked_at      TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_refresh_user ON refresh_token(user_id);
 
 -- ============================================================================
 -- 2. CATÁLOGOS COMPARTIDOS

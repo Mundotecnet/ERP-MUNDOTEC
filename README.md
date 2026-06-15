@@ -165,12 +165,40 @@ El guard niega 401 si no hay usuario y 403 si le falta el permiso.
 - **db-drift**: levanta un PostgreSQL service y corre `pnpm db:check-drift`.
 - **integration-tests**: corre `pnpm --filter @mundotec/api test:integration` (testcontainers).
 
+## Autenticación (Sprint 2)
+
+`AuthModule` emite y valida JWT con `@nestjs/jwt`.
+
+```http
+POST /auth/login
+{ "username": "alice", "password": "Secret123!", "companyId": "1" }
+→ 200 { accessToken, refreshToken, user: { id, email, fullName, companyId } }
+
+POST /auth/refresh
+{ "refreshToken": "<jwt>" }
+→ 200 { accessToken }
+```
+
+- `username` acepta usuario o correo. `companyId` solo se requiere si la cuenta existe en más de una empresa.
+- Access token: `JWT_ACCESS_EXPIRES_IN` (default 15m). Refresh token: `JWT_REFRESH_EXPIRES_IN` (default 7d).
+- Refresh tokens son **stateful**: cada login persiste `refresh_token(jti, token_hash, expires_at, revoked_at)` para que el logout (PR-6) pueda revocarlos.
+- Tras `AUTH_MAX_FAILED_ATTEMPTS` (default 5) intentos fallidos seguidos, la cuenta queda bloqueada `AUTH_LOCK_DURATION_MIN` (default 15) minutos → 423 Locked.
+- `JwtAuthGuard` es global: TODO endpoint requiere `Authorization: Bearer <accessToken>`. Para excluir explícitamente, decorar con `@Public()`. Hoy son públicos: `GET /`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`.
+- `PermissionsGuard` (`@RequirePermission('código')`) sigue siendo route-level; ahora el `userId` viene del JWT, no del header stub.
+
 ## Estado del Sprint 1
 
 - [x] **PR-1 — HU-1.1**: estructura del monorepo, TypeScript, ESLint/Prettier, README.
 - [x] **PR-2 — HU-1.2**: Docker Compose (prod + dev), Dockerfile del api, `/health`, CI.
 - [x] **PR-3 — HU-1.3**: Prisma + esquema núcleo + migración inicial + seed + drift check.
 - [x] **PR-4 — HU-6.1**: extensiones audit / tenant / softDelete + RBAC + tests de integración.
+
+## Estado del Sprint 2
+
+- [x] **PR-5 — HU-2.1**: login + JWT (access + refresh stateful) + bloqueo por intentos fallidos.
+- [ ] PR-6 — HU-2.2 + HU-2.4: logout (revocar refresh) + políticas de contraseña.
+- [ ] PR-7 — HU-2.3: recuperar contraseña (mailer stub).
+- [ ] PR-8 — HU-3.1 + HU-3.3: CRUD de empresa + aislamiento real por empresa con e2e.
 
 ## Convenciones
 
