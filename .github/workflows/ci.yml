@@ -35,6 +35,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma Client
+        # El postinstall de @prisma/client no encuentra el schema porque vive en
+        # apps/api/prisma/, no en la raíz. Lo generamos explícitamente aquí.
+        run: pnpm --filter @mundotec/api exec prisma generate
+
       - name: Prettier check
         run: pnpm format:check
 
