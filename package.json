@@ -35,8 +35,10 @@
       "@prisma/client",
       "@prisma/engines",
       "bcrypt",
+      "cpu-features",
       "esbuild",
-      "prisma"
+      "prisma",
+      "ssh2"
     ]
   }
 }
