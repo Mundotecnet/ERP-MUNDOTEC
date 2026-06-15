@@ -64,13 +64,42 @@ pnpm --filter @mundotec/web-store dev      # http://localhost:5174
 Para desarrollo el api corre en el host y la DB en un contenedor con el puerto expuesto:
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d        # levanta PostgreSQL 15
+docker compose -f docker-compose.dev.yml up -d        # levanta PostgreSQL 15 en el puerto 5433
 docker compose -f docker-compose.dev.yml down         # detiene (mantiene los datos)
 docker compose -f docker-compose.dev.yml down -v      # detiene y borra el volumen
 ```
 
-La DB se inicializa al primer arranque con `db/erp_schema.sql`. Para regenerar el
-esquema desde cero usa `down -v` y vuelve a hacer `up`.
+> Nota: el host de producción ya usa el 5432 para otro PostgreSQL legacy, por eso
+> el ERP en dev se mapea a `5433`. Sobreescríbelo con `POSTGRES_HOST_PORT` en `.env`
+> si lo necesitas en otra máquina.
+
+La DB se inicializa al primer arranque con `db/erp_schema.sql` (esto es útil cuando
+quieres una shadow para comparar). Para arrancar limpia y dejar que Prisma poble el
+esquema, haz `down -v` antes del `up`.
+
+## Esquema, migraciones y seed (Prisma)
+
+El núcleo + catálogos base están modelados en `apps/api/prisma/schema.prisma`.
+`db/erp_schema.sql` sigue siendo la **fuente de verdad** — el script
+`db:check-drift` compara columna a columna las tablas modeladas contra el SQL
+canónico y falla si hay drift.
+
+```bash
+# Aplicar migraciones (crea/sincroniza la DB con el schema Prisma)
+pnpm --filter @mundotec/api db:migrate
+
+# Seed (idempotente): empresa demo, permisos, rol admin, usuario admin
+SEED_ADMIN_PASSWORD='tu-password' pnpm --filter @mundotec/api db:seed
+
+# Verificar que el schema Prisma siga alineado con erp_schema.sql
+DATABASE_URL='postgres://...' pnpm db:check-drift
+
+# Prisma Studio (UI web para explorar datos)
+pnpm --filter @mundotec/api db:studio
+```
+
+El usuario admin del seed se crea con `SEED_ADMIN_EMAIL` (default `admin@demo.local`)
+y `SEED_ADMIN_PASSWORD` (obligatorio, sin default — define en `.env`).
 
 ## Stack de producción (Docker Compose)
 
@@ -90,21 +119,17 @@ Trae `HEALTHCHECK` contra `GET /health`.
 
 ## CI
 
-`.github/workflows/ci.yml` corre en cada PR y push a `main`:
+`.github/workflows/ci.yml` corre en cada PR y push a `main`, en tres jobs paralelos:
 
-1. `pnpm install --frozen-lockfile`
-2. `pnpm format:check`
-3. `pnpm lint`
-4. `pnpm typecheck`
-5. `pnpm build`
-6. `pnpm test`
-7. `docker build` del api (cacheado con GHA cache)
+- **verify**: install → format:check → lint → typecheck → build → test.
+- **docker-api**: `docker build` del api con caché GHA.
+- **db-drift**: levanta un PostgreSQL service y corre `pnpm db:check-drift`.
 
 ## Estado del Sprint 1
 
 - [x] **PR-1 — HU-1.1**: estructura del monorepo, TypeScript, ESLint/Prettier, README.
 - [x] **PR-2 — HU-1.2**: Docker Compose (prod + dev), Dockerfile del api, `/health`, CI.
-- [ ] PR-3 — HU-1.3: Prisma + esquema núcleo + migración inicial + seed.
+- [x] **PR-3 — HU-1.3**: Prisma + esquema núcleo + migración inicial + seed + drift check.
 - [ ] PR-4 — HU-6.1: interceptor de auditoría + ganchos para multiempresa, soft-delete y RBAC.
 
 ## Convenciones
