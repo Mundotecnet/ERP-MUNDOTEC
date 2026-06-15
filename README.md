@@ -117,20 +117,60 @@ El `Dockerfile` del api (`apps/api/Dockerfile`) es multi-stage: instala con pnpm
 compila con `nest build` y sirve con `node dist/main.js` desde un usuario no-root.
 Trae `HEALTHCHECK` contra `GET /health`.
 
+## Auditoría, multi-tenant y RBAC
+
+El cliente Prisma del api se entrega con tres extensiones aplicadas
+automáticamente (`apps/api/src/prisma/extensions/`):
+
+- **`audit`** — cada `create / update / upsert / delete` sobre los modelos del
+  núcleo registra una fila en `audit_log` con `old_values`, `new_values` y el
+  `user_id` activo. El registry de modelos auditables vive en
+  `src/prisma/extensions/registry.ts`.
+- **`tenant`** — inyecta `where: { companyId }` (o `id` para Company) en
+  `findMany / findFirst / count / updateMany / deleteMany` sobre las entidades
+  con `company_id`. Si no hay `companyId` en el contexto (seed, migraciones),
+  no filtra.
+- **`softDelete`** — para los modelos con `deleted_at` (sólo `AppUser` en el
+  esquema canónico actual): `delete` se transforma en `update({ deletedAt })` y
+  las lecturas filtran `deletedAt: null`. La fila aparece en `audit_log` como
+  acción `DELETE` aunque físicamente sea un update.
+
+El contexto del request (`{ userId, companyId }`) se propaga vía
+`RequestContextService` con `AsyncLocalStorage.enterWith`. Sprint 1 lo pobla
+desde los headers `x-user-id` / `x-company-id` (stub) y consumirá el JWT real
+cuando llegue HU-2.x.
+
+Los endpoints declaran permisos requeridos con
+`@RequirePermission('código')` (decorador) + `@UseGuards(PermissionsGuard)`.
+El guard niega 401 si no hay usuario y 403 si le falta el permiso.
+
+> **Heads up sobre `PrismaPromise` y `AsyncLocalStorage`:** las llamadas a
+> Prisma devuelven un thenable propio (`PrismaPromise`) que NO extiende
+> `Promise`. `RequestContextService.run` lo detecta vía duck-typing — usar
+> `instanceof Promise` rompe el filtro tenant y el audit.
+
+## Tests
+
+| Comando                                        | Qué corre                                                                                                                                                                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm test`                                    | Unit tests de los workspaces (`*.spec.ts` en `src/`).                                                                                                                                                                     |
+| `pnpm --filter @mundotec/api test:integration` | Tests de integración (`*.int.spec.ts` en `apps/api/test/integration`). Usan **`@testcontainers/postgresql`**: cada suite arranca un Postgres efímero, aplica las migraciones Prisma y ejecuta. Requiere Docker corriendo. |
+
 ## CI
 
-`.github/workflows/ci.yml` corre en cada PR y push a `main`, en tres jobs paralelos:
+`.github/workflows/ci.yml` corre en cada PR y push a `main`, en cuatro jobs paralelos:
 
-- **verify**: install → format:check → lint → typecheck → build → test.
+- **verify**: install → `prisma generate` → format:check → lint → typecheck → build → test (unitarios).
 - **docker-api**: `docker build` del api con caché GHA.
 - **db-drift**: levanta un PostgreSQL service y corre `pnpm db:check-drift`.
+- **integration-tests**: corre `pnpm --filter @mundotec/api test:integration` (testcontainers).
 
 ## Estado del Sprint 1
 
 - [x] **PR-1 — HU-1.1**: estructura del monorepo, TypeScript, ESLint/Prettier, README.
 - [x] **PR-2 — HU-1.2**: Docker Compose (prod + dev), Dockerfile del api, `/health`, CI.
 - [x] **PR-3 — HU-1.3**: Prisma + esquema núcleo + migración inicial + seed + drift check.
-- [ ] PR-4 — HU-6.1: interceptor de auditoría + ganchos para multiempresa, soft-delete y RBAC.
+- [x] **PR-4 — HU-6.1**: extensiones audit / tenant / softDelete + RBAC + tests de integración.
 
 ## Convenciones
 

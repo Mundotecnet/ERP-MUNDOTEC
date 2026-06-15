@@ -77,6 +77,38 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  integration-tests:
+    name: Integration tests (testcontainers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.3
+          run_install: false
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm --filter @mundotec/api exec prisma generate
+
+      - name: Integration tests
+        # testcontainers usa el daemon de Docker del runner; no necesita un
+        # service container porque cada test arranca su propio Postgres.
+        run: pnpm --filter @mundotec/api test:integration
+
   db-drift:
     name: DB drift check (Prisma vs erp_schema.sql)
     runs-on: ubuntu-latest
