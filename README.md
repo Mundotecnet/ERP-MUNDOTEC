@@ -203,6 +203,7 @@ Cada empresa puede tener una fila en `password_policy` con `min_length`, `requir
 `PasswordPolicyService` (en `AuthModule`) valida y se usará desde change-password, creación de usuarios (futuro) y reset (PR-7). El servicio expone `validate(password, policy)` y `validateForCompany(companyId, password)` con mensajes claros en `errors`.
 
 ### Notas internas
+
 - En NestJS el contexto del usuario del JWT viaja por **dos canales**: `request.authUser` (para handlers, leído con `@CurrentUser()`) y `RequestContextService.set()` (para que las extensiones Prisma lo vean). `enterWith` del guard no siempre propaga al handler — ver memoria interna del proyecto.
 
 ## Estado del Sprint 1
