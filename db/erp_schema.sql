@@ -123,6 +123,19 @@ CREATE TABLE password_policy (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- HU-2.3 — token de recuperación de contraseña. El email envía
+-- `<jti>.<secret>`; la DB guarda jti en claro (lookup) y bcrypt(secret).
+CREATE TABLE password_reset_token (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+    jti             VARCHAR(64) NOT NULL UNIQUE,
+    token_hash      VARCHAR(255) NOT NULL,
+    expires_at      TIMESTAMPTZ NOT NULL,
+    used_at         TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_reset_user ON password_reset_token(user_id);
+
 -- ============================================================================
 -- 2. CATÁLOGOS COMPARTIDOS
 -- ============================================================================

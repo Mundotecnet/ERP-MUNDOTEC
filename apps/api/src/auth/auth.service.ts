@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 import {
   BadRequestException,
@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 
+import { MailerService } from '../mailer/mailer.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { AccessTokenPayload, RefreshTokenPayload } from './types/jwt-payload';
@@ -34,6 +35,8 @@ const DEFAULT_MAX_FAILED_ATTEMPTS = 5;
 const DEFAULT_LOCK_DURATION_MIN = 15;
 const DEFAULT_ACCESS_EXPIRES_IN = '15m';
 const DEFAULT_REFRESH_EXPIRES_IN = '7d';
+const DEFAULT_RESET_EXPIRES_IN_MIN = 60;
+const DEFAULT_RESET_URL_BASE = 'https://erp.example.com/reset-password';
 
 @Injectable()
 export class AuthService {
@@ -44,6 +47,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly passwordPolicy: PasswordPolicyService,
+    private readonly mailer: MailerService,
   ) {}
 
   async login(input: {
@@ -180,6 +184,102 @@ export class AuthService {
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  /**
+   * Flujo "olvidé mi contraseña". Siempre se comporta silenciosamente: si el
+   * usuario no existe, no envía nada y no lanza error — el endpoint responde
+   * 204 invariante para no filtrar qué cuentas existen.
+   *
+   * Si el usuario existe, genera un token de un solo uso, lo guarda hasheado
+   * en `password_reset_token` y envía el correo con la URL `?token=jti.secret`.
+   * Si findCandidateUser detecta ambigüedad (mismo username en varias
+   * empresas sin companyId), se ignora también para no filtrar.
+   */
+  async forgotPassword(usernameOrEmail: string, companyId: bigint | null): Promise<void> {
+    let user;
+    try {
+      user = await this.findCandidateUser(usernameOrEmail, companyId);
+    } catch {
+      return;
+    }
+    if (!user || !user.isActive || user.deletedAt !== null) return;
+
+    const jti = randomUUID();
+    const secret = randomBytes(32).toString('base64url');
+    const tokenPlain = `${jti}.${secret}`;
+    const expiresIn = Number(
+      this.config.get<string>('RESET_TOKEN_EXPIRES_IN_MIN') ?? DEFAULT_RESET_EXPIRES_IN_MIN,
+    );
+    const expiresAt = new Date(Date.now() + expiresIn * 60_000);
+
+    await this.prisma.raw.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        jti,
+        tokenHash: await bcrypt.hash(secret, BCRYPT_ROUNDS),
+        expiresAt,
+      },
+    });
+
+    const base = this.config.get<string>('MAIL_RESET_URL_BASE') ?? DEFAULT_RESET_URL_BASE;
+    const url = `${base}?token=${encodeURIComponent(tokenPlain)}`;
+    await this.mailer.send({
+      to: user.email,
+      subject: 'Recuperación de contraseña — MundoTec ERP',
+      text:
+        `Hola ${user.fullName},\n\n` +
+        `Recibimos una solicitud para restablecer tu contraseña.\n` +
+        `Ingresa al siguiente enlace dentro de los próximos ${expiresIn} minutos:\n\n` +
+        `${url}\n\n` +
+        `Si no solicitaste este cambio, ignora este correo.\n`,
+    });
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const parts = token.split('.');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      throw new BadRequestException('Token inválido.');
+    }
+    const [jti, secret] = parts;
+
+    const row = await this.prisma.raw.passwordResetToken.findUnique({ where: { jti } });
+    if (!row || row.usedAt !== null || row.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('Token inválido o expirado.');
+    }
+    if (!(await bcrypt.compare(secret, row.tokenHash))) {
+      throw new BadRequestException('Token inválido o expirado.');
+    }
+
+    const user = await this.prisma.raw.appUser.findUniqueOrThrow({ where: { id: row.userId } });
+    const validation = await this.passwordPolicy.validateForCompany(user.companyId, newPassword);
+    if (!validation.ok) {
+      throw new BadRequestException({
+        message: 'La nueva contraseña no cumple la política de la empresa.',
+        errors: validation.errors,
+      });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await this.prisma.raw.$transaction([
+      this.prisma.raw.appUser.update({
+        where: { id: user.id },
+        data: {
+          passwordHash: newHash,
+          updatedAt: new Date(),
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        },
+      }),
+      this.prisma.raw.passwordResetToken.update({
+        where: { id: row.id },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.raw.refreshToken.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
   }
 
   private async findCandidateUser(usernameOrEmail: string, companyId: bigint | null) {

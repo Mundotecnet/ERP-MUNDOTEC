@@ -48,6 +48,10 @@ export async function createAppTestContext(): Promise<AppTestContext> {
   process.env.JWT_REFRESH_EXPIRES_IN = '1h';
   process.env.AUTH_MAX_FAILED_ATTEMPTS = '3';
   process.env.AUTH_LOCK_DURATION_MIN = '1';
+  process.env.MAIL_TRANSPORT = 'json';
+  process.env.MAIL_FROM = 'no-reply@test.local';
+  process.env.MAIL_RESET_URL_BASE = 'https://erp.test.local/reset-password';
+  process.env.RESET_TOKEN_EXPIRES_IN_MIN = '60';
 
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
