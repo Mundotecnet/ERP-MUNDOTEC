@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { HealthModule } from './health/health.module';
+import { MailerModule } from './mailer/mailer.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RbacModule } from './rbac/rbac.module';
 import { RequestContextModule } from './request-context/request-context.module';
@@ -17,6 +18,7 @@ import { RequestContextModule } from './request-context/request-context.module';
     ConfigModule.forRoot({ isGlobal: true, cache: true }),
     RequestContextModule,
     PrismaModule,
+    MailerModule,
     AuthModule,
     RbacModule,
     HealthModule,

@@ -194,7 +194,28 @@ POST /auth/logout
 POST /auth/change-password   (requiere Bearer)
 { "currentPassword": "...", "newPassword": "..." }
 → 204 (revoca todos los refresh activos del usuario; obliga re-login en cada dispositivo)
+
+POST /auth/forgot-password
+{ "username" o "email": "...", "companyId"?: "..." }
+→ 204 SIEMPRE (no filtra si la cuenta existe; si existe envía email con un token)
+
+POST /auth/reset-password
+{ "token": "<jti>.<secret>", "newPassword": "..." }
+→ 204 (token de un solo uso; revoca refresh activos del usuario)
 ```
+
+### Recuperación de contraseña (HU-2.3)
+
+`forgot-password` genera un token `<jti>.<secret>` (UUID + 32 bytes random), persiste `jti` + `bcrypt(secret)` en `password_reset_token` con `expires_at = now() + RESET_TOKEN_EXPIRES_IN_MIN` (default 60 min) y envía un correo con la URL `MAIL_RESET_URL_BASE?token=<jti.secret>`. `reset-password` busca por `jti`, compara con `bcrypt`, valida la nueva contraseña contra la policy de la empresa y, en una sola transacción, actualiza la password, marca el token como usado y revoca todos los refresh activos.
+
+### Mailer
+
+`MailerService` envía con `nodemailer` y admite dos transportes vía `MAIL_TRANSPORT`:
+
+- `json` (default): `jsonTransport` — el correo no sale al mundo, solo se loguea con Nest Logger y queda disponible para los tests vía `MailerService.getLastJsonMessage()`.
+- `smtp`: SMTP real. Requiere `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (y opcionalmente `SMTP_SECURE`).
+
+`MAIL_FROM` es requerido en ambos modos. Producción se enciende cambiando esas vars en `.env`.
 
 ### Política de contraseñas (HU-2.4)
 
@@ -217,7 +238,7 @@ Cada empresa puede tener una fila en `password_policy` con `min_length`, `requir
 
 - [x] **PR-5 — HU-2.1**: login + JWT (access + refresh stateful) + bloqueo por intentos fallidos.
 - [x] **PR-6 — HU-2.2 + HU-2.4**: logout (revoca refresh) + change-password + políticas de contraseña por empresa.
-- [ ] PR-7 — HU-2.3: recuperar contraseña (mailer stub).
+- [x] **PR-7 — HU-2.3**: forgot-password + reset-password + MailerService (json/smtp).
 - [ ] PR-8 — HU-3.1 + HU-3.3: CRUD de empresa + aislamiento real por empresa con e2e.
 
 ## Convenciones

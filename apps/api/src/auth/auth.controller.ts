@@ -5,11 +5,15 @@ import { AuthUserContext, CurrentUser } from './decorators/current-user.decorato
 import { Public } from './decorators/public.decorator';
 import {
   ChangePasswordBody,
+  ForgotPasswordBody,
   LoginRequestBody,
   parseChangePasswordBody,
+  parseForgotPasswordBody,
   parseLoginBody,
   parseRefreshBody,
+  parseResetPasswordBody,
   RefreshRequestBody,
+  ResetPasswordBody,
 } from './dto/login.dto';
 
 @Controller('auth')
@@ -38,6 +42,22 @@ export class AuthController {
   async logout(@Body() body: RefreshRequestBody): Promise<void> {
     const refreshToken = parseRefreshBody(body);
     await this.auth.logout(refreshToken);
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(204)
+  async forgotPassword(@Body() body: ForgotPasswordBody): Promise<void> {
+    const input = parseForgotPasswordBody(body);
+    await this.auth.forgotPassword(input.usernameOrEmail, input.companyId);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(204)
+  async resetPassword(@Body() body: ResetPasswordBody): Promise<void> {
+    const input = parseResetPasswordBody(body);
+    await this.auth.resetPassword(input.token, input.newPassword);
   }
 
   /**
