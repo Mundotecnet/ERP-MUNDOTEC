@@ -102,7 +102,7 @@ describe('Auth flow (e2e contra Postgres real)', () => {
     });
 
     it('endpoint protegido rechaza sin Bearer con 401', async () => {
-      const res = await request(tc.app.getHttpServer()).post('/admin/companies').send({});
+      const res = await request(tc.app.getHttpServer()).get('/companies/current');
       expect(res.status).toBe(401);
     });
 
@@ -113,10 +113,9 @@ describe('Auth flow (e2e contra Postgres real)', () => {
       expect(login.status).toBe(200);
 
       const res = await request(tc.app.getHttpServer())
-        .post('/admin/companies')
-        .set('Authorization', `Bearer ${login.body.accessToken}`)
-        .send({ legalName: 'X', taxId: 'X' });
-      // Alice existe pero no tiene roles asignados → PermissionsGuard responde 403.
+        .get('/companies/current')
+        .set('Authorization', `Bearer ${login.body.accessToken}`);
+      // Alice no tiene roles asignados → PermissionsGuard responde 403.
       // Lo importante es que YA NO sea 401 (autenticación) sino 403 (autorización).
       expect(res.status).toBe(403);
     });

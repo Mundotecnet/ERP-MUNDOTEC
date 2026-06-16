@@ -2,11 +2,12 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 
-import { AdminCompaniesModule } from './admin/companies/admin-companies.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { BranchesModule } from './branches/branches.module';
+import { CompaniesModule } from './companies/companies.module';
 import { HealthModule } from './health/health.module';
 import { MailerModule } from './mailer/mailer.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -22,7 +23,8 @@ import { RequestContextModule } from './request-context/request-context.module';
     AuthModule,
     RbacModule,
     HealthModule,
-    AdminCompaniesModule,
+    CompaniesModule,
+    BranchesModule,
   ],
   controllers: [AppController],
   providers: [
