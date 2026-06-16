@@ -44,3 +44,23 @@ export function parseRefreshBody(body: RefreshRequestBody): string {
   }
   return body.refreshToken;
 }
+
+export interface ChangePasswordBody {
+  currentPassword?: unknown;
+  newPassword?: unknown;
+}
+
+export interface ParsedChangePassword {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export function parseChangePasswordBody(body: ChangePasswordBody): ParsedChangePassword {
+  if (typeof body.currentPassword !== 'string' || body.currentPassword.length === 0) {
+    throw new BadRequestException('Campo "currentPassword" requerido.');
+  }
+  if (typeof body.newPassword !== 'string' || body.newPassword.length === 0) {
+    throw new BadRequestException('Campo "newPassword" requerido.');
+  }
+  return { currentPassword: body.currentPassword, newPassword: body.newPassword };
+}

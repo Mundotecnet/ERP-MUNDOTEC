@@ -48,6 +48,7 @@ model Company {
   departments       Department[]
   productCategories ProductCategory[]
   customerCategories CustomerCategory[]
+  passwordPolicy    PasswordPolicy?
 
   @@map("company")
 }
@@ -173,6 +174,21 @@ model RefreshToken {
 
   @@index([userId], map: "idx_refresh_user")
   @@map("refresh_token")
+}
+
+// HU-2.4 — políticas de contraseña por empresa.
+model PasswordPolicy {
+  companyId      BigInt   @id @map("company_id")
+  minLength      Int      @default(10) @map("min_length")
+  requireUpper   Boolean  @default(true) @map("require_upper")
+  requireLower   Boolean  @default(true) @map("require_lower")
+  requireDigit   Boolean  @default(true) @map("require_digit")
+  requireSpecial Boolean  @default(false) @map("require_special")
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("password_policy")
 }
 
 // ============================================================================

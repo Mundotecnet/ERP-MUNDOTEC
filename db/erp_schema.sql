@@ -111,6 +111,18 @@ CREATE TABLE refresh_token (
 );
 CREATE INDEX idx_refresh_user ON refresh_token(user_id);
 
+-- HU-2.4 — políticas de contraseña configurables por empresa. Una fila por
+-- company; si no existe, se aplican defaults en código (PasswordPolicyService).
+CREATE TABLE password_policy (
+    company_id        BIGINT  PRIMARY KEY REFERENCES company(id) ON DELETE CASCADE,
+    min_length        INTEGER NOT NULL DEFAULT 10,
+    require_upper     BOOLEAN NOT NULL DEFAULT TRUE,
+    require_lower     BOOLEAN NOT NULL DEFAULT TRUE,
+    require_digit     BOOLEAN NOT NULL DEFAULT TRUE,
+    require_special   BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ============================================================================
 -- 2. CATÁLOGOS COMPARTIDOS
 -- ============================================================================
