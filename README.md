@@ -208,6 +208,26 @@ POST /auth/reset-password
 
 `forgot-password` genera un token `<jti>.<secret>` (UUID + 32 bytes random), persiste `jti` + `bcrypt(secret)` en `password_reset_token` con `expires_at = now() + RESET_TOKEN_EXPIRES_IN_MIN` (default 60 min) y envía un correo con la URL `MAIL_RESET_URL_BASE?token=<jti.secret>`. `reset-password` busca por `jti`, compara con `bcrypt`, valida la nueva contraseña contra la policy de la empresa y, en una sola transacción, actualiza la password, marca el token como usado y revoca todos los refresh activos.
 
+## Empresa y multiempresa (HU-3.1 + HU-3.3)
+
+Endpoints `CompaniesController`:
+
+```http
+GET   /companies/current     (perm company.read)
+PATCH /companies/current     (perm company.update)
+```
+
+- Sirven la empresa del usuario autenticado vía `@CurrentUser()`. El controller pasa el `companyId` explícito al service — la extensión Prisma `tenant` actúa como red de seguridad si algún flujo futuro lo olvidara.
+- El PATCH valida el `taxId` con el helper `normalizeCostaRicaTaxId` (acepta cédulas jurídicas con/sin guiones, físicas, DIMEX y NITE). Cada cambio queda registrado en `audit_log` por la extensión `audit`.
+
+Para evidenciar aislamiento por empresa hay un `BranchesController` mínimo:
+
+```http
+GET /branches    (perm branch.read)
+```
+
+Devuelve sólo las sucursales de la empresa activa. El CRUD completo de sucursales/almacenes (HU-3.2) entra en Sprint 3.
+
 ### Mailer
 
 `MailerService` envía con `nodemailer` y admite dos transportes vía `MAIL_TRANSPORT`:
@@ -239,7 +259,9 @@ Cada empresa puede tener una fila en `password_policy` con `min_length`, `requir
 - [x] **PR-5 — HU-2.1**: login + JWT (access + refresh stateful) + bloqueo por intentos fallidos.
 - [x] **PR-6 — HU-2.2 + HU-2.4**: logout (revoca refresh) + change-password + políticas de contraseña por empresa.
 - [x] **PR-7 — HU-2.3**: forgot-password + reset-password + MailerService (json/smtp).
-- [ ] PR-8 — HU-3.1 + HU-3.3: CRUD de empresa + aislamiento real por empresa con e2e.
+- [x] **PR-8 — HU-3.1 + HU-3.3**: CompaniesController, validación cédula CR, BranchesController y e2e de aislamiento.
+
+**Sprint 2 completo** ✓ — Autenticación, multiempresa y aislamiento listos. Próximo: Sprint 3 (HU-4.1–4.4 roles/permisos + HU-3.2 sucursales).
 
 ## Convenciones
 
