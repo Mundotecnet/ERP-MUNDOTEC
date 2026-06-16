@@ -13,6 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { PasswordPolicyService } from './password-policy.service';
 import { AccessTokenPayload, RefreshTokenPayload } from './types/jwt-payload';
 
 export interface AuthenticatedUserSummary {
@@ -42,6 +43,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly passwordPolicy: PasswordPolicyService,
   ) {}
 
   async login(input: {
@@ -117,6 +119,67 @@ export class AuthService {
 
     const accessToken = await this.signAccessToken(BigInt(payload.sub), BigInt(payload.companyId));
     return { accessToken };
+  }
+
+  /**
+   * Revoca el refresh token entregado. Idempotente: si el JWT no es válido o ya
+   * está revocado, igual respondemos OK para no filtrar estado de tokens a un
+   * cliente no autenticado.
+   */
+  async logout(refreshToken: string): Promise<void> {
+    let payload: RefreshTokenPayload;
+    try {
+      payload = await this.jwt.verifyAsync<RefreshTokenPayload>(refreshToken, {
+        secret: this.refreshSecret(),
+      });
+    } catch {
+      return;
+    }
+    if (payload.type !== 'refresh') return;
+    await this.prisma.raw.refreshToken.updateMany({
+      where: { jti: payload.jti, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  /**
+   * Cambio de contraseña por el propio usuario autenticado. Valida la actual,
+   * exige que la nueva cumpla la policy de su empresa y revoca todos los
+   * refresh tokens activos del usuario (obliga re-login en cada dispositivo).
+   */
+  async changePassword(
+    userId: bigint,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const user = await this.prisma.raw.appUser.findUnique({ where: { id: userId } });
+    if (!user || user.deletedAt !== null) {
+      throw new UnauthorizedException('Usuario no encontrado.');
+    }
+    if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('Contraseña actual incorrecta.');
+    }
+    const validation = await this.passwordPolicy.validateForCompany(user.companyId, newPassword);
+    if (!validation.ok) {
+      throw new BadRequestException({
+        message: 'La nueva contraseña no cumple la política de la empresa.',
+        errors: validation.errors,
+      });
+    }
+    if (await bcrypt.compare(newPassword, user.passwordHash)) {
+      throw new BadRequestException({
+        message: 'La nueva contraseña no puede ser igual a la actual.',
+      });
+    }
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await this.prisma.raw.appUser.update({
+      where: { id: userId },
+      data: { passwordHash: newHash, updatedAt: new Date() },
+    });
+    await this.prisma.raw.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   private async findCandidateUser(usernameOrEmail: string, companyId: bigint | null) {

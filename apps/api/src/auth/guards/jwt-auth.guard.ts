@@ -33,7 +33,21 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const payload = await this.auth.verifyAccessToken(token);
-    this.ctx.set({ userId: BigInt(payload.sub), companyId: BigInt(payload.companyId) });
+    const userId = BigInt(payload.sub);
+    const companyId = BigInt(payload.companyId);
+    // (1) En el request, para que los controladores lo lean vía @Req() sin
+    //     depender de AsyncLocalStorage entre guard → handler (que en Nest 10
+    //     no siempre propaga el contexto entrante del enterWith del guard al
+    //     handler asíncrono — observado en tests con tokens de distintos
+    //     usuarios en el mismo proceso).
+    (request as Request & { authUser?: { userId: bigint; companyId: bigint } }).authUser = {
+      userId,
+      companyId,
+    };
+    // (2) En el RequestContextService, para que las extensiones Prisma
+    //     (audit / tenant / softDelete) vean el contexto durante las queries
+    //     que dispara el handler.
+    this.ctx.set({ userId, companyId });
     return true;
   }
 

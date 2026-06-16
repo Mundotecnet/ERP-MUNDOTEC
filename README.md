@@ -181,10 +181,29 @@ POST /auth/refresh
 
 - `username` acepta usuario o correo. `companyId` solo se requiere si la cuenta existe en más de una empresa.
 - Access token: `JWT_ACCESS_EXPIRES_IN` (default 15m). Refresh token: `JWT_REFRESH_EXPIRES_IN` (default 7d).
-- Refresh tokens son **stateful**: cada login persiste `refresh_token(jti, token_hash, expires_at, revoked_at)` para que el logout (PR-6) pueda revocarlos.
+- Refresh tokens son **stateful**: cada login persiste `refresh_token(jti, token_hash, expires_at, revoked_at)` para que el logout pueda revocarlos.
 - Tras `AUTH_MAX_FAILED_ATTEMPTS` (default 5) intentos fallidos seguidos, la cuenta queda bloqueada `AUTH_LOCK_DURATION_MIN` (default 15) minutos → 423 Locked.
-- `JwtAuthGuard` es global: TODO endpoint requiere `Authorization: Bearer <accessToken>`. Para excluir explícitamente, decorar con `@Public()`. Hoy son públicos: `GET /`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`.
-- `PermissionsGuard` (`@RequirePermission('código')`) sigue siendo route-level; ahora el `userId` viene del JWT, no del header stub.
+- `JwtAuthGuard` es global: TODO endpoint requiere `Authorization: Bearer <accessToken>`. Para excluir explícitamente, decorar con `@Public()`. Hoy son públicos: `GET /`, `GET /health`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`.
+- `PermissionsGuard` (`@RequirePermission('código')`) sigue siendo route-level; el `userId` viene del JWT.
+
+```http
+POST /auth/logout
+{ "refreshToken": "<jwt>" }
+→ 204 (idempotente: si el token es inválido o ya está revocado igual responde 204)
+
+POST /auth/change-password   (requiere Bearer)
+{ "currentPassword": "...", "newPassword": "..." }
+→ 204 (revoca todos los refresh activos del usuario; obliga re-login en cada dispositivo)
+```
+
+### Política de contraseñas (HU-2.4)
+
+Cada empresa puede tener una fila en `password_policy` con `min_length`, `require_upper/lower/digit/special`. Sin fila, se aplican defaults: 10+ caracteres, mayúscula + minúscula + dígito.
+
+`PasswordPolicyService` (en `AuthModule`) valida y se usará desde change-password, creación de usuarios (futuro) y reset (PR-7). El servicio expone `validate(password, policy)` y `validateForCompany(companyId, password)` con mensajes claros en `errors`.
+
+### Notas internas
+- En NestJS el contexto del usuario del JWT viaja por **dos canales**: `request.authUser` (para handlers, leído con `@CurrentUser()`) y `RequestContextService.set()` (para que las extensiones Prisma lo vean). `enterWith` del guard no siempre propaga al handler — ver memoria interna del proyecto.
 
 ## Estado del Sprint 1
 
@@ -196,7 +215,7 @@ POST /auth/refresh
 ## Estado del Sprint 2
 
 - [x] **PR-5 — HU-2.1**: login + JWT (access + refresh stateful) + bloqueo por intentos fallidos.
-- [ ] PR-6 — HU-2.2 + HU-2.4: logout (revocar refresh) + políticas de contraseña.
+- [x] **PR-6 — HU-2.2 + HU-2.4**: logout (revoca refresh) + change-password + políticas de contraseña por empresa.
 - [ ] PR-7 — HU-2.3: recuperar contraseña (mailer stub).
 - [ ] PR-8 — HU-3.1 + HU-3.3: CRUD de empresa + aislamiento real por empresa con e2e.
 
