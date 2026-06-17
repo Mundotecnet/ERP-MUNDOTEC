@@ -228,6 +228,26 @@ GET /branches    (perm branch.read)
 
 Devuelve sólo las sucursales de la empresa activa. El CRUD completo de sucursales/almacenes (HU-3.2) entra en Sprint 3.
 
+## Usuarios (HU-4.1)
+
+`UsersController` ofrece CRUD básico de `app_user` filtrado por la empresa del JWT:
+
+```http
+GET    /users?page=1&pageSize=20   (perm users.read)
+GET    /users/:id                  (perm users.read)
+POST   /users                      (perm users.create)
+PATCH  /users/:id                  (perm users.update)
+DELETE /users/:id                  (perm users.delete)
+```
+
+- POST y PATCH (cuando incluyen `password`) validan contra el `PasswordPolicyService` de la empresa.
+- Marca de vendedor (`isSalesperson`) y `commissionPct` ∈ [0, 1] cubren HU-4.1.
+- DELETE es **soft-delete** (la extensión `softDelete` convierte el `delete` en `update deletedAt = now()`); el row físico queda y el `audit_log` lo registra como `DELETE`.
+- Cuando un admin cambia la `password` de otro usuario vía PATCH, se revoca todos los refresh activos de ese usuario (re-login forzado en cada dispositivo).
+- Conflicto de username/email → 409. Lookup de user de otra empresa → 404.
+
+## Estado del Sprint 3
+
 ### Mailer
 
 `MailerService` envía con `nodemailer` y admite dos transportes vía `MAIL_TRANSPORT`:
@@ -261,7 +281,14 @@ Cada empresa puede tener una fila en `password_policy` con `min_length`, `requir
 - [x] **PR-7 — HU-2.3**: forgot-password + reset-password + MailerService (json/smtp).
 - [x] **PR-8 — HU-3.1 + HU-3.3**: CompaniesController, validación cédula CR, BranchesController y e2e de aislamiento.
 
-**Sprint 2 completo** ✓ — Autenticación, multiempresa y aislamiento listos. Próximo: Sprint 3 (HU-4.1–4.4 roles/permisos + HU-3.2 sucursales).
+**Sprint 2 completo** ✓ — Autenticación, multiempresa y aislamiento listos.
+
+## Estado del Sprint 3
+
+- [x] **PR-9 — HU-4.1**: Users CRUD (POST/GET/PATCH/DELETE) + marca de vendedor + soft-delete + revocación de refresh al cambiar password + `RequestContextInterceptor` global.
+- [ ] PR-10 — HU-4.2: Roles CRUD + asignar permisos a roles.
+- [ ] PR-11 — HU-4.3 + HU-4.4: asignar roles a users + cobertura RBAC.
+- [ ] PR-12 — HU-3.2: Branches + Warehouses CRUD con asociación.
 
 ## Convenciones
 
