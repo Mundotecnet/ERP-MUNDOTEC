@@ -17,6 +17,7 @@ import { RequestContextInterceptor } from './request-context/request-context.int
 import { RequestContextModule } from './request-context/request-context.module';
 import { RolesModule } from './roles/roles.module';
 import { UsersModule } from './users/users.module';
+import { WarehousesModule } from './warehouses/warehouses.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { UsersModule } from './users/users.module';
     HealthModule,
     CompaniesModule,
     BranchesModule,
+    WarehousesModule,
     UsersModule,
     RolesModule,
     PermissionsModule,

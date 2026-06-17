@@ -40,6 +40,12 @@ const PERMISSIONS: PermissionSpec[] = [
   { code: 'branch.update', module: 'branch', description: 'Editar sucursales' },
   { code: 'branch.delete', module: 'branch', description: 'Desactivar/borrar sucursales' },
 
+  // --- Almacenes ---
+  { code: 'warehouses.read', module: 'warehouses', description: 'Listar y ver almacenes' },
+  { code: 'warehouses.create', module: 'warehouses', description: 'Crear almacenes' },
+  { code: 'warehouses.update', module: 'warehouses', description: 'Editar almacenes' },
+  { code: 'warehouses.delete', module: 'warehouses', description: 'Eliminar almacenes' },
+
   // --- Usuarios ---
   { code: 'users.read', module: 'users', description: 'Listar y ver usuarios' },
   { code: 'users.create', module: 'users', description: 'Crear usuarios' },
