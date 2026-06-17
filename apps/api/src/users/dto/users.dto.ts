@@ -163,3 +163,35 @@ export function parseListUsersQuery(q: ListUsersQuery): ParsedListUsers {
     pageSize: intInRange(q.pageSize, 'pageSize', 20, 200),
   };
 }
+
+export interface ReplaceUserRolesBody {
+  roleIds?: unknown;
+}
+
+export function parseReplaceUserRoles(body: ReplaceUserRolesBody): bigint[] {
+  if (!Array.isArray(body.roleIds)) {
+    throw new BadRequestException('Campo "roleIds" debe ser un arreglo.');
+  }
+  const ids: bigint[] = [];
+  for (const item of body.roleIds) {
+    if (typeof item !== 'string' && typeof item !== 'number') {
+      throw new BadRequestException('Cada roleId debe ser string o number.');
+    }
+    try {
+      ids.push(BigInt(item));
+    } catch {
+      throw new BadRequestException(`roleId inválido: ${String(item)}`);
+    }
+  }
+  // Deduplicar manteniendo el orden de la primera aparición.
+  const seen = new Set<string>();
+  const out: bigint[] = [];
+  for (const id of ids) {
+    const key = id.toString();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(id);
+    }
+  }
+  return out;
+}

@@ -283,6 +283,50 @@ Cada empresa puede tener una fila en `password_policy` con `min_length`, `requir
 
 **Sprint 2 completo** ✓ — Autenticación, multiempresa y aislamiento listos.
 
+## Asignación de roles a usuarios (HU-4.3)
+
+```http
+PUT /users/:id/roles    (perm users.assign-roles)
+{ "roleIds": ["1", "5"] }
+```
+
+Reemplaza el **set completo** de roles del usuario en una transacción Prisma (`userRole.deleteMany` + `createMany`). Sólo acepta roles de la misma empresa; un id de otra empresa devuelve **400**. `[]` quita todos los roles.
+
+**Efecto inmediato**: `PermissionsGuard` consulta `permission → role_permission → role → user_role` en cada request, así que asignar o quitar un rol cambia el comportamiento de RBAC desde el siguiente request del usuario afectado, sin re-login.
+
+Permiso separado `users.assign-roles` (no `users.update`) para granularidad: un admin puede editar usuarios sin escalar privilegios.
+
+## Matriz endpoint → permiso (HU-4.4, cobertura)
+
+| Endpoint                 | Método | `@Public()` | Permiso requerido                               |
+| ------------------------ | ------ | ----------- | ----------------------------------------------- |
+| `/`                      | GET    | ✓           | —                                               |
+| `/health`                | GET    | ✓           | —                                               |
+| `/auth/login`            | POST   | ✓           | —                                               |
+| `/auth/refresh`          | POST   | ✓           | —                                               |
+| `/auth/logout`           | POST   | ✓           | —                                               |
+| `/auth/forgot-password`  | POST   | ✓           | —                                               |
+| `/auth/reset-password`   | POST   | ✓           | —                                               |
+| `/auth/change-password`  | POST   | —           | (sólo Bearer; no requiere `@RequirePermission`) |
+| `/companies/current`     | GET    | —           | `company.read`                                  |
+| `/companies/current`     | PATCH  | —           | `company.update`                                |
+| `/branches`              | GET    | —           | `branch.read`                                   |
+| `/users`                 | GET    | —           | `users.read`                                    |
+| `/users/:id`             | GET    | —           | `users.read`                                    |
+| `/users`                 | POST   | —           | `users.create`                                  |
+| `/users/:id`             | PATCH  | —           | `users.update`                                  |
+| `/users/:id`             | DELETE | —           | `users.delete`                                  |
+| `/users/:id/roles`       | PUT    | —           | `users.assign-roles`                            |
+| `/roles`                 | GET    | —           | `roles.read`                                    |
+| `/roles/:id`             | GET    | —           | `roles.read`                                    |
+| `/roles`                 | POST   | —           | `roles.create`                                  |
+| `/roles/:id`             | PATCH  | —           | `roles.update`                                  |
+| `/roles/:id`             | DELETE | —           | `roles.delete`                                  |
+| `/roles/:id/permissions` | PUT    | —           | `roles.update`                                  |
+| `/permissions`           | GET    | —           | `permissions.read`                              |
+
+Cobertura: el `JwtAuthGuard` global rechaza con 401 a quien no traiga `Bearer`; el `PermissionsGuard` rechaza con 403 a quien no tenga el permiso declarado. Para endpoints públicos, decora con `@Public()`.
+
 ## Roles y permisos (HU-4.2)
 
 `RolesController` ofrece CRUD de roles por empresa + un endpoint para reemplazar el set completo de permisos:
@@ -312,7 +356,7 @@ Es **solo lectura** — nuevos códigos entran vía seed/migración, no por API.
 
 - [x] **PR-9 — HU-4.1**: Users CRUD (POST/GET/PATCH/DELETE) + marca de vendedor + soft-delete + revocación de refresh al cambiar password + `RequestContextInterceptor` global.
 - [x] **PR-10 — HU-4.2**: Roles CRUD + `PUT /roles/:id/permissions` (replace set) + GET /permissions catálogo.
-- [ ] PR-11 — HU-4.3 + HU-4.4: asignar roles a users + cobertura RBAC.
+- [x] **PR-11 — HU-4.3 + HU-4.4**: `PUT /users/:id/roles` con permiso `users.assign-roles`, efecto inmediato verificado y matriz endpoint→permiso documentada.
 - [ ] PR-12 — HU-3.2: Branches + Warehouses CRUD con asociación.
 
 ## Convenciones

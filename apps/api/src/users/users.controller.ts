@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -20,7 +21,9 @@ import {
   ListUsersQuery,
   parseCreateUserBody,
   parseListUsersQuery,
+  parseReplaceUserRoles,
   parseUpdateUserBody,
+  ReplaceUserRolesBody,
   UpdateUserBody,
 } from './dto/users.dto';
 import { PaginatedUsers, UsersService, UserView } from './users.service';
@@ -78,5 +81,21 @@ export class UsersController {
   @HttpCode(204)
   async remove(@CurrentUser() user: AuthUserContext, @Param('id') id: string): Promise<void> {
     await this.svc.remove(user.companyId, parseBigIntParam(id, 'id'));
+  }
+
+  /**
+   * Reemplaza el conjunto completo de roles del usuario. Permiso separado
+   * para granularidad: un admin puede tener `users.update` (edita datos) pero
+   * NO `users.assign-roles` (no escala permisos a otros).
+   */
+  @Put(':id/roles')
+  @RequirePermission('users.assign-roles')
+  async replaceRoles(
+    @CurrentUser() user: AuthUserContext,
+    @Param('id') id: string,
+    @Body() body: ReplaceUserRolesBody,
+  ): Promise<UserView> {
+    const roleIds = parseReplaceUserRoles(body);
+    return this.svc.replaceRoles(user.companyId, parseBigIntParam(id, 'id'), roleIds);
   }
 }

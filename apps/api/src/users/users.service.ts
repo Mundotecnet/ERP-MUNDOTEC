@@ -158,6 +158,46 @@ export class UsersService {
     });
   }
 
+  /**
+   * Reemplaza el set completo de roles del usuario. Valida que el user sea de
+   * la empresa activa y que TODOS los roleIds existan en la misma empresa (no
+   * se pueden asignar roles de otra empresa).
+   *
+   * Efecto inmediato: como `PermissionsGuard` consulta la DB en cada request,
+   * el siguiente endpoint que el user llame ya refleja el cambio.
+   */
+  async replaceRoles(companyId: bigint, userId: bigint, roleIds: bigint[]): Promise<UserView> {
+    const existing = await this.prisma.raw.appUser.findFirst({
+      where: { id: userId, companyId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Usuario no encontrado.');
+
+    if (roleIds.length === 0) {
+      await this.prisma.raw.userRole.deleteMany({ where: { userId: existing.id } });
+      return this.toView(existing);
+    }
+
+    const found = await this.prisma.raw.role.findMany({
+      where: { id: { in: roleIds }, companyId },
+      select: { id: true },
+    });
+    if (found.length !== roleIds.length) {
+      const foundIds = new Set(found.map((r) => r.id.toString()));
+      const missing = roleIds.filter((r) => !foundIds.has(r.toString()));
+      throw new BadRequestException(
+        `Roles inexistentes o de otra empresa: ${missing.map((m) => m.toString()).join(', ')}`,
+      );
+    }
+
+    await this.prisma.raw.$transaction([
+      this.prisma.raw.userRole.deleteMany({ where: { userId: existing.id } }),
+      this.prisma.raw.userRole.createMany({
+        data: found.map((r) => ({ userId: existing.id, roleId: r.id })),
+      }),
+    ]);
+    return this.toView(existing);
+  }
+
   private translateUniqueViolation(err: unknown): void {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       const target = Array.isArray(err.meta?.target)
