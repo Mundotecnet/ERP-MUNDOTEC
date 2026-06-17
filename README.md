@@ -283,10 +283,35 @@ Cada empresa puede tener una fila en `password_policy` con `min_length`, `requir
 
 **Sprint 2 completo** ✓ — Autenticación, multiempresa y aislamiento listos.
 
+## Roles y permisos (HU-4.2)
+
+`RolesController` ofrece CRUD de roles por empresa + un endpoint para reemplazar el set completo de permisos:
+
+```http
+GET    /roles?page=1&pageSize=20   (perm roles.read)
+GET    /roles/:id                  (perm roles.read)
+POST   /roles                      (perm roles.create)
+PATCH  /roles/:id                  (perm roles.update)
+DELETE /roles/:id                  (perm roles.delete)
+PUT    /roles/:id/permissions      (perm roles.update)   body: { permissionCodes: string[] }
+```
+
+- `DELETE` **bloquea con 409** si el rol está asignado a uno o más usuarios — quita la asignación primero (en PR-11 entra el endpoint para gestionarlo).
+- `PUT /permissions` reemplaza el set completo en una transacción Prisma. Valida que todos los `permissionCodes` existan en el catálogo antes de aplicar; si falta alguno, devuelve 400 con la lista de códigos inexistentes.
+- Nombres de rol son únicos por empresa (`UNIQUE (company_id, name)`); duplicado → 409.
+
+`PermissionsController` expone el catálogo de permisos del sistema:
+
+```http
+GET /permissions   (perm permissions.read)
+```
+
+Es **solo lectura** — nuevos códigos entran vía seed/migración, no por API.
+
 ## Estado del Sprint 3
 
 - [x] **PR-9 — HU-4.1**: Users CRUD (POST/GET/PATCH/DELETE) + marca de vendedor + soft-delete + revocación de refresh al cambiar password + `RequestContextInterceptor` global.
-- [ ] PR-10 — HU-4.2: Roles CRUD + asignar permisos a roles.
+- [x] **PR-10 — HU-4.2**: Roles CRUD + `PUT /roles/:id/permissions` (replace set) + GET /permissions catálogo.
 - [ ] PR-11 — HU-4.3 + HU-4.4: asignar roles a users + cobertura RBAC.
 - [ ] PR-12 — HU-3.2: Branches + Warehouses CRUD con asociación.
 
