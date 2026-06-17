@@ -45,6 +45,11 @@ const PERMISSIONS: PermissionSpec[] = [
   { code: 'users.create', module: 'users', description: 'Crear usuarios' },
   { code: 'users.update', module: 'users', description: 'Editar usuarios' },
   { code: 'users.delete', module: 'users', description: 'Eliminar/desactivar usuarios' },
+  {
+    code: 'users.assign-roles',
+    module: 'users',
+    description: 'Asignar/quitar roles a usuarios',
+  },
 
   // --- Roles ---
   { code: 'roles.read', module: 'roles', description: 'Listar y ver roles' },
