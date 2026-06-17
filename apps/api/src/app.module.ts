@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -12,7 +12,9 @@ import { HealthModule } from './health/health.module';
 import { MailerModule } from './mailer/mailer.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RbacModule } from './rbac/rbac.module';
+import { RequestContextInterceptor } from './request-context/request-context.interceptor';
 import { RequestContextModule } from './request-context/request-context.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { RequestContextModule } from './request-context/request-context.module';
     HealthModule,
     CompaniesModule,
     BranchesModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [
@@ -32,6 +35,9 @@ import { RequestContextModule } from './request-context/request-context.module';
     // Guard global: TODOS los endpoints requieren Bearer access token, salvo
     // los marcados @Public() (login, refresh, health, root).
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // Interceptor que refresca el RequestContext con el usuario del request
+    // antes del handler, para que las extensiones Prisma vean el contexto.
+    { provide: APP_INTERCEPTOR, useClass: RequestContextInterceptor },
   ],
 })
 export class AppModule {}
