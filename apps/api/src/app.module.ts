@@ -10,10 +10,12 @@ import { BranchesModule } from './branches/branches.module';
 import { CompaniesModule } from './companies/companies.module';
 import { HealthModule } from './health/health.module';
 import { MailerModule } from './mailer/mailer.module';
+import { PermissionsModule } from './permissions/permissions.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RbacModule } from './rbac/rbac.module';
 import { RequestContextInterceptor } from './request-context/request-context.interceptor';
 import { RequestContextModule } from './request-context/request-context.module';
+import { RolesModule } from './roles/roles.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -28,6 +30,8 @@ import { UsersModule } from './users/users.module';
     CompaniesModule,
     BranchesModule,
     UsersModule,
+    RolesModule,
+    PermissionsModule,
   ],
   controllers: [AppController],
   providers: [
