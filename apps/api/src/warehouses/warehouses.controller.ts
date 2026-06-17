@@ -14,13 +14,13 @@ import {
 import { AuthUserContext, CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermission } from '../rbac/require-permission.decorator';
-import { BranchesService, BranchView } from './branches.service';
 import {
-  CreateBranchBody,
-  parseCreateBranchBody,
-  parseUpdateBranchBody,
-  UpdateBranchBody,
-} from './dto/branches.dto';
+  CreateWarehouseBody,
+  parseCreateWarehouseBody,
+  parseUpdateWarehouseBody,
+  UpdateWarehouseBody,
+} from './dto/warehouses.dto';
+import { WarehousesService, WarehouseView } from './warehouses.service';
 
 function parseBigIntParam(value: string, name: string): bigint {
   try {
@@ -30,45 +30,52 @@ function parseBigIntParam(value: string, name: string): bigint {
   }
 }
 
-@Controller('branches')
+@Controller('warehouses')
 @UseGuards(PermissionsGuard)
-export class BranchesController {
-  constructor(private readonly svc: BranchesService) {}
+export class WarehousesController {
+  constructor(private readonly svc: WarehousesService) {}
 
   @Get()
-  @RequirePermission('branch.read')
-  async list(@CurrentUser() user: AuthUserContext): Promise<BranchView[]> {
+  @RequirePermission('warehouses.read')
+  async list(@CurrentUser() user: AuthUserContext): Promise<WarehouseView[]> {
     return this.svc.list(user.companyId);
   }
 
   @Get(':id')
-  @RequirePermission('branch.read')
-  async getOne(@CurrentUser() user: AuthUserContext, @Param('id') id: string): Promise<BranchView> {
+  @RequirePermission('warehouses.read')
+  async getOne(
+    @CurrentUser() user: AuthUserContext,
+    @Param('id') id: string,
+  ): Promise<WarehouseView> {
     return this.svc.getOne(user.companyId, parseBigIntParam(id, 'id'));
   }
 
   @Post()
-  @RequirePermission('branch.create')
+  @RequirePermission('warehouses.create')
   @HttpCode(201)
   async create(
     @CurrentUser() user: AuthUserContext,
-    @Body() body: CreateBranchBody,
-  ): Promise<BranchView> {
-    return this.svc.create(user.companyId, parseCreateBranchBody(body));
+    @Body() body: CreateWarehouseBody,
+  ): Promise<WarehouseView> {
+    return this.svc.create(user.companyId, parseCreateWarehouseBody(body));
   }
 
   @Patch(':id')
-  @RequirePermission('branch.update')
+  @RequirePermission('warehouses.update')
   async update(
     @CurrentUser() user: AuthUserContext,
     @Param('id') id: string,
-    @Body() body: UpdateBranchBody,
-  ): Promise<BranchView> {
-    return this.svc.update(user.companyId, parseBigIntParam(id, 'id'), parseUpdateBranchBody(body));
+    @Body() body: UpdateWarehouseBody,
+  ): Promise<WarehouseView> {
+    return this.svc.update(
+      user.companyId,
+      parseBigIntParam(id, 'id'),
+      parseUpdateWarehouseBody(body),
+    );
   }
 
   @Delete(':id')
-  @RequirePermission('branch.delete')
+  @RequirePermission('warehouses.delete')
   @HttpCode(204)
   async remove(@CurrentUser() user: AuthUserContext, @Param('id') id: string): Promise<void> {
     await this.svc.remove(user.companyId, parseBigIntParam(id, 'id'));

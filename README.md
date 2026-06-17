@@ -220,13 +220,27 @@ PATCH /companies/current     (perm company.update)
 - Sirven la empresa del usuario autenticado vía `@CurrentUser()`. El controller pasa el `companyId` explícito al service — la extensión Prisma `tenant` actúa como red de seguridad si algún flujo futuro lo olvidara.
 - El PATCH valida el `taxId` con el helper `normalizeCostaRicaTaxId` (acepta cédulas jurídicas con/sin guiones, físicas, DIMEX y NITE). Cada cambio queda registrado en `audit_log` por la extensión `audit`.
 
-Para evidenciar aislamiento por empresa hay un `BranchesController` mínimo:
+## Sucursales y almacenes (HU-3.2)
 
 ```http
-GET /branches    (perm branch.read)
+GET    /branches                (perm branch.read)
+GET    /branches/:id             (perm branch.read)
+POST   /branches                 (perm branch.create)
+PATCH  /branches/:id             (perm branch.update)
+DELETE /branches/:id             (perm branch.delete)
+
+GET    /warehouses               (perm warehouses.read)
+GET    /warehouses/:id           (perm warehouses.read)
+POST   /warehouses               (perm warehouses.create)
+PATCH  /warehouses/:id           (perm warehouses.update)
+DELETE /warehouses/:id           (perm warehouses.delete)
 ```
 
-Devuelve sólo las sucursales de la empresa activa. El CRUD completo de sucursales/almacenes (HU-3.2) entra en Sprint 3.
+- `code` único por empresa en ambos modelos (P2002 → 409). `name` requerido.
+- Sucursal y almacén filtran por la empresa del JWT; intentar leer/editar/borrar uno de otra empresa devuelve 404.
+- `Warehouse.branchId` es opcional. Al asignarlo, el service verifica que la sucursal sea de la **misma empresa**; si no, 400.
+- `DELETE /branches/:id` bloquea con **409** si la sucursal tiene almacenes asociados — desasocia o elimina los almacenes primero.
+- Cada mutación queda registrada en `audit_log` con el `userId` real vía la extensión Prisma `audit`.
 
 ## Usuarios (HU-4.1)
 
@@ -311,6 +325,15 @@ Permiso separado `users.assign-roles` (no `users.update`) para granularidad: un 
 | `/companies/current`     | GET    | —           | `company.read`                                  |
 | `/companies/current`     | PATCH  | —           | `company.update`                                |
 | `/branches`              | GET    | —           | `branch.read`                                   |
+| `/branches/:id`          | GET    | —           | `branch.read`                                   |
+| `/branches`              | POST   | —           | `branch.create`                                 |
+| `/branches/:id`          | PATCH  | —           | `branch.update`                                 |
+| `/branches/:id`          | DELETE | —           | `branch.delete`                                 |
+| `/warehouses`            | GET    | —           | `warehouses.read`                               |
+| `/warehouses/:id`        | GET    | —           | `warehouses.read`                               |
+| `/warehouses`            | POST   | —           | `warehouses.create`                             |
+| `/warehouses/:id`        | PATCH  | —           | `warehouses.update`                             |
+| `/warehouses/:id`        | DELETE | —           | `warehouses.delete`                             |
 | `/users`                 | GET    | —           | `users.read`                                    |
 | `/users/:id`             | GET    | —           | `users.read`                                    |
 | `/users`                 | POST   | —           | `users.create`                                  |
@@ -357,7 +380,9 @@ Es **solo lectura** — nuevos códigos entran vía seed/migración, no por API.
 - [x] **PR-9 — HU-4.1**: Users CRUD (POST/GET/PATCH/DELETE) + marca de vendedor + soft-delete + revocación de refresh al cambiar password + `RequestContextInterceptor` global.
 - [x] **PR-10 — HU-4.2**: Roles CRUD + `PUT /roles/:id/permissions` (replace set) + GET /permissions catálogo.
 - [x] **PR-11 — HU-4.3 + HU-4.4**: `PUT /users/:id/roles` con permiso `users.assign-roles`, efecto inmediato verificado y matriz endpoint→permiso documentada.
-- [ ] PR-12 — HU-3.2: Branches + Warehouses CRUD con asociación.
+- [x] **PR-12 — HU-3.2**: Branches CRUD completo + Warehouses CRUD con asociación opcional a sucursal (bloqueo cross-tenant) + DELETE branch con almacenes asociados bloqueado.
+
+**Sprint 3 completo** ✓ — Roles/permisos, usuarios, sucursales y almacenes listos. Próximo: Sprint 4 (HU-5.1–5.5 catálogos + HU-6.2 shell + HU-6.3 parámetros).
 
 ## Convenciones
 
