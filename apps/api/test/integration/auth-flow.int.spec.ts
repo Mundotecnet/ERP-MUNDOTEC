@@ -121,6 +121,59 @@ describe('Auth flow (e2e contra Postgres real)', () => {
     });
   });
 
+  describe('GET /auth/me', () => {
+    it('devuelve usuario + lista de permisos efectivos', async () => {
+      // Asignar a alice un rol con dos permisos para validar la deduplicación
+      // y el ordenamiento de salida.
+      const permLogin = await tc.raw.permission.upsert({
+        where: { code: 'auth.login' },
+        update: {},
+        create: { code: 'auth.login', module: 'auth', description: 'auth.login' },
+      });
+      const permRead = await tc.raw.permission.upsert({
+        where: { code: 'company.read' },
+        update: {},
+        create: { code: 'company.read', module: 'company', description: 'company.read' },
+      });
+      const alice = await tc.raw.appUser.findFirstOrThrow({
+        where: { username: 'alice' },
+        select: { id: true },
+      });
+      const role = await tc.raw.role.create({
+        data: { companyId, name: 'me-tester', description: 'role para /auth/me' },
+      });
+      await tc.raw.rolePermission.createMany({
+        data: [
+          { roleId: role.id, permissionId: permLogin.id },
+          { roleId: role.id, permissionId: permRead.id },
+        ],
+      });
+      await tc.raw.userRole.upsert({
+        where: { userId_roleId: { userId: alice.id, roleId: role.id } },
+        update: {},
+        create: { userId: alice.id, roleId: role.id },
+      });
+
+      const login = await request(tc.app.getHttpServer())
+        .post('/auth/login')
+        .send({ username: 'alice', password: 'Secret123!' });
+      expect(login.status).toBe(200);
+
+      const me = await request(tc.app.getHttpServer())
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${login.body.accessToken}`);
+      expect(me.status).toBe(200);
+      expect(me.body.email).toBe('alice@demo.local');
+      expect(me.body.companyId).toBe(companyIdStr);
+      expect(me.body.permissions).toEqual(['auth.login', 'company.read']);
+    });
+
+    it('GET /auth/me sin Bearer → 401', async () => {
+      const res = await request(tc.app.getHttpServer()).get('/auth/me');
+      expect(res.status).toBe(401);
+    });
+  });
+
   describe('POST /auth/refresh', () => {
     it('emite un nuevo accessToken con un refresh válido', async () => {
       const login = await request(tc.app.getHttpServer())

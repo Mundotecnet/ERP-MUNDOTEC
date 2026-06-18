@@ -445,7 +445,34 @@ Es **solo lectura** — nuevos códigos entran vía seed/migración, no por API.
 - [x] **PR-13 — HU-5.1 + 5.2 + 5.3**: Currencies, ExchangeRates, Taxes, UnitsOfMeasure.
 - [x] **PR-14 — HU-5.4 + 5.5**: Departments + ProductCategories jerárquicas + CustomerCategories.
 - [x] **PR-15 — HU-6.3**: Parámetros generales (tabla `company_param` + CRUD upsert).
-- [ ] PR-16 — HU-6.2: Shell frontend web-erp.
+- [x] **PR-16 — HU-6.2**: Shell frontend `web-erp` (login + routing + AuthProvider + layout con menú dinámico por permisos + páginas mínimas).
+
+**Sprint 4 completo** ✓ — Catálogos, parámetros y shell de UI listos. **Fase 1 cerrada**.
+
+## Frontend `web-erp` (HU-6.2)
+
+Shell de la aplicación interna construido con React 18 + Vite + Tailwind CSS + shadcn-style primitives + react-router-dom 6 + TanStack Query 5 + react-hook-form + zod + axios.
+
+```bash
+pnpm --filter @mundotec/web-erp dev      # http://localhost:5173 (proxy a /api → http://localhost:3000)
+pnpm --filter @mundotec/web-erp build
+pnpm --filter @mundotec/web-erp test     # vitest (jsdom + Testing Library)
+```
+
+Para desarrollo local: levanta primero el backend (`pnpm --filter @mundotec/api start:dev`) y luego el frontend. El proxy de Vite redirige `/api/*` a `http://localhost:3000` (override con `VITE_API_BASE_URL`).
+
+### Lo que entrega
+
+- **`POST /auth/login`** desde `/login` con react-hook-form + zod. Persiste access/refresh tokens en `localStorage`. Al iniciar la app revalida la sesión con `GET /auth/me`.
+- **`GET /auth/me`** (endpoint nuevo en el backend) devuelve `{ id, email, username, fullName, companyId, permissions[] }`. El frontend lo consume para armar el menú dinámico.
+- **`ProtectedRoute`** redirige a `/login` si no hay sesión; rechaza con "Sin permiso" si el usuario está logueado pero le falta el permiso declarado en la ruta.
+- **`Shell` layout**: sidebar con menú **filtrado por permisos** (`NAV_ENTRIES` + `hasPermission`), header con datos del usuario y botón de logout.
+- **Páginas read-only** sobre los endpoints existentes: Dashboard (`/companies/current`), Sucursales (`/branches`), Usuarios (`/users`), Roles (`/roles`), Monedas (`/currencies`), Configuración (`/params`). El CRUD desde UI llega en sprints posteriores.
+- **Refresh automático**: interceptor `axios` captura 401, llama `POST /auth/refresh`, reintenta el request original; si falla, limpia la sesión y vuelve a `/login`.
+
+### Tests
+
+`vitest` con `jsdom` + `@testing-library/react`. 9 tests cubren: validación del formulario de login, llamadas al `login()` con el payload correcto, redirección si ya hay sesión, `ProtectedRoute` redirige sin auth y filtra por permiso, `Shell` muestra/oculta entradas según permisos.
 
 ## Catálogos base (HU-5.1, 5.2, 5.3)
 

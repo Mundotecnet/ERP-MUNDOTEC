@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
 import { AuthUserContext, CurrentUser } from './decorators/current-user.decorator';
@@ -58,6 +58,15 @@ export class AuthController {
   async resetPassword(@Body() body: ResetPasswordBody): Promise<void> {
     const input = parseResetPasswordBody(body);
     await this.auth.resetPassword(input.token, input.newPassword);
+  }
+
+  /**
+   * Sesión actual: datos del usuario + permisos efectivos. Requiere Bearer.
+   * El frontend lo usa para armar el menú dinámico y mostrar el contexto.
+   */
+  @Get('me')
+  async me(@CurrentUser() user: AuthUserContext) {
+    return this.auth.me(user.userId);
   }
 
   /**
