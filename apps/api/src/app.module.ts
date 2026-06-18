@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { BranchesModule } from './branches/branches.module';
 import { CompaniesModule } from './companies/companies.module';
+import { CompanyParamsModule } from './company-params/company-params.module';
 import { CurrenciesModule } from './currencies/currencies.module';
 import { CustomerCategoriesModule } from './customer-categories/customer-categories.module';
 import { DepartmentsModule } from './departments/departments.module';
@@ -48,6 +49,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     DepartmentsModule,
     ProductCategoriesModule,
     CustomerCategoriesModule,
+    CompanyParamsModule,
   ],
   controllers: [AppController],
   providers: [

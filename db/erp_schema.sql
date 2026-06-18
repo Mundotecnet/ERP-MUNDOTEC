@@ -123,6 +123,17 @@ CREATE TABLE password_policy (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- HU-6.3 — parámetros generales por empresa (key/value JSONB). Soporta cosas
+-- como prefijos de documentos, formatos, flags de features, etc. PK compuesta
+-- (company_id, key) para unicidad por empresa.
+CREATE TABLE company_param (
+    company_id  BIGINT NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+    key         VARCHAR(80) NOT NULL,
+    value       JSONB,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (company_id, key)
+);
+
 -- HU-2.3 — token de recuperación de contraseña. El email envía
 -- `<jti>.<secret>`; la DB guarda jti en claro (lookup) y bcrypt(secret).
 CREATE TABLE password_reset_token (
