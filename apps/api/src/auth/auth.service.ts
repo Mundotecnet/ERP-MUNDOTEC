@@ -425,6 +425,50 @@ export class AuthService {
   }
 
   /**
+   * Datos del usuario autenticado más la lista de permisos efectivos (vía
+   * sus roles). Usado por el frontend para armar el menú dinámico y mostrar
+   * el contexto activo. No expone passwordHash ni datos sensibles.
+   */
+  async me(userId: bigint): Promise<{
+    id: string;
+    email: string;
+    username: string;
+    fullName: string;
+    companyId: string;
+    permissions: string[];
+  }> {
+    const user = await this.prisma.raw.appUser.findUnique({
+      where: { id: userId },
+      include: {
+        userRoles: {
+          include: {
+            role: {
+              include: { rolePermissions: { include: { permission: { select: { code: true } } } } },
+            },
+          },
+        },
+      },
+    });
+    if (!user || user.deletedAt !== null) {
+      throw new UnauthorizedException('Usuario no encontrado.');
+    }
+    const permSet = new Set<string>();
+    for (const ur of user.userRoles) {
+      for (const rp of ur.role.rolePermissions) {
+        permSet.add(rp.permission.code);
+      }
+    }
+    return {
+      id: user.id.toString(),
+      email: user.email,
+      username: user.username,
+      fullName: user.fullName,
+      companyId: user.companyId.toString(),
+      permissions: Array.from(permSet).sort(),
+    };
+  }
+
+  /**
    * Usado por el JwtAuthGuard para validar el access token y armar el contexto.
    * Centraliza el secret + el chequeo del claim `type`.
    */
