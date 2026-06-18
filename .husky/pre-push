@@ -1,0 +1,31 @@
+#!/usr/bin/env sh
+# Replica el job `verify` de .github/workflows/ci.yml en LOCAL antes de cada
+# push. Cierra la brecha "local pasa, CI falla" que costó re-pushes en PR-3,
+# PR-6 y PR-13 (siempre algún archivo editado tarde sin pasar por Prettier).
+#
+# Para saltarse el hook excepcionalmente (NO recomendado): `git push --no-verify`.
+
+set -e
+
+echo "▶ pre-push: pnpm install --frozen-lockfile"
+pnpm install --frozen-lockfile
+
+echo "▶ pre-push: prisma generate"
+pnpm --filter @mundotec/api exec prisma generate
+
+echo "▶ pre-push: format:check"
+pnpm format:check
+
+echo "▶ pre-push: lint"
+pnpm lint
+
+echo "▶ pre-push: typecheck"
+pnpm typecheck
+
+echo "▶ pre-push: build"
+pnpm build
+
+echo "▶ pre-push: test"
+pnpm test
+
+echo "✓ pre-push: el job 'verify' del CI pasa localmente."

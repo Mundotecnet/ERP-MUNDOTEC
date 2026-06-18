@@ -9,13 +9,15 @@
     "pnpm": ">=10.0.0"
   },
   "scripts": {
+    "prepare": "husky",
     "lint": "pnpm -r --parallel run lint",
     "typecheck": "pnpm -r --parallel run typecheck && tsc --project scripts/tsconfig.json",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
-    "db:check-drift": "ts-node --project scripts/tsconfig.json --transpile-only scripts/check-schema-drift.ts"
+    "db:check-drift": "ts-node --project scripts/tsconfig.json --transpile-only scripts/check-schema-drift.ts",
+    "ci:verify": "pnpm install --frozen-lockfile && pnpm --filter @mundotec/api exec prisma generate && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test"
   },
   "devDependencies": {
     "@types/pg": "8.11.10",
@@ -24,6 +26,7 @@
     "eslint": "8.57.1",
     "eslint-config-prettier": "9.1.0",
     "eslint-plugin-prettier": "5.2.1",
+    "husky": "9.1.6",
     "pg": "8.13.1",
     "prettier": "3.4.2",
     "ts-node": "10.9.2",
