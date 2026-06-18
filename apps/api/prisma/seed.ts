@@ -69,6 +69,14 @@ const PERMISSIONS: PermissionSpec[] = [
   // --- Auditoría ---
   { code: 'audit.read', module: 'audit', description: 'Consultar el log de auditoría' },
 
+  // --- Parámetros generales (HU-6.3) ---
+  { code: 'params.read', module: 'params', description: 'Leer parámetros generales de la empresa' },
+  {
+    code: 'params.manage',
+    module: 'params',
+    description: 'Crear/editar/eliminar parámetros generales',
+  },
+
   // --- Catálogos base: lectura + gestión (create/update/delete) ---
   { code: 'catalogs.currency.read', module: 'catalogs', description: 'Ver monedas' },
   {

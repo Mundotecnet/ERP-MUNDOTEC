@@ -381,6 +381,10 @@ Permiso separado `users.assign-roles` (no `users.update`) para granularidad: un 
 | `/customer-categories`     | POST   | —           | `catalogs.customer-category.manage`             |
 | `/customer-categories/:id` | PATCH  | —           | `catalogs.customer-category.manage`             |
 | `/customer-categories/:id` | DELETE | —           | `catalogs.customer-category.manage`             |
+| `/params`                  | GET    | —           | `params.read`                                   |
+| `/params/:key`             | GET    | —           | `params.read`                                   |
+| `/params/:key`             | PUT    | —           | `params.manage`                                 |
+| `/params/:key`             | DELETE | —           | `params.manage`                                 |
 | `/warehouses`              | GET    | —           | `warehouses.read`                               |
 | `/warehouses/:id`          | GET    | —           | `warehouses.read`                               |
 | `/warehouses`              | POST   | —           | `warehouses.create`                             |
@@ -440,7 +444,7 @@ Es **solo lectura** — nuevos códigos entran vía seed/migración, no por API.
 
 - [x] **PR-13 — HU-5.1 + 5.2 + 5.3**: Currencies, ExchangeRates, Taxes, UnitsOfMeasure.
 - [x] **PR-14 — HU-5.4 + 5.5**: Departments + ProductCategories jerárquicas + CustomerCategories.
-- [ ] PR-15 — HU-6.3: Parámetros generales (tabla `company_param`).
+- [x] **PR-15 — HU-6.3**: Parámetros generales (tabla `company_param` + CRUD upsert).
 - [ ] PR-16 — HU-6.2: Shell frontend web-erp.
 
 ## Catálogos base (HU-5.1, 5.2, 5.3)
@@ -463,6 +467,21 @@ Tres catálogos **per-tenant** que completan la fase de catálogos del backend:
 | Departments        | `GET/POST/GET:id/PATCH/DELETE /departments`         | UNIQUE (`company_id`, `name`). Duplicado → 409.                                                                                                                                                    |
 | ProductCategories  | `GET/POST/GET:id/PATCH/DELETE /product-categories`  | **Jerárquico** con `parentId` opcional. Auto-referencia → 400. Cambio que formaría ciclo → 400 (detección con cursor ascendente). Parent de otra empresa → 400. DELETE 409 si tiene subcategorías. |
 | CustomerCategories | `GET/POST/GET:id/PATCH/DELETE /customer-categories` | `code` VARCHAR(5) normalizado a mayúsculas (`[A-Z0-9]{1,5}`). UNIQUE (`company_id`, `code`).                                                                                                       |
+
+## Parámetros generales (HU-6.3)
+
+Configuración key/value por empresa. PK compuesta `(company_id, key)`; `value` es JSONB y admite cualquier JSON (strings, numbers, booleans, null, objects, arrays). Pensado para prefijos de documentos, formatos, flags de features y cualquier ajuste que no merezca su propia tabla.
+
+```http
+GET    /params           (perm params.read)    → lista todos los params de la empresa
+GET    /params/:key      (perm params.read)    → 404 si no existe
+PUT    /params/:key      (perm params.manage)  → upsert
+DELETE /params/:key      (perm params.manage)  → 204 / 404
+```
+
+- `key` debe empezar con minúscula, máximo 80 chars, sólo `[a-z0-9._-]` (`format.date`, `documents.invoice.prefix`, `feature.crm.enabled`). Mayúsculas o chars fuera → 400.
+- `value` aceptado tal cual; falta de campo → 400. Persistido en JSONB.
+- Aislamiento por empresa del JWT. El endpoint no permite cruzar empresas.
 
 Próximo: Sprint 4 continúa con parámetros (HU-6.3) y shell frontend (HU-6.2).
 

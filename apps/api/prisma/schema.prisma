@@ -50,6 +50,7 @@ model Company {
   productCategories ProductCategory[]
   customerCategories CustomerCategory[]
   passwordPolicy    PasswordPolicy?
+  params            CompanyParam[]
 
   @@map("company")
 }
@@ -208,6 +209,19 @@ model PasswordPolicy {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("password_policy")
+}
+
+// HU-6.3 — parámetros generales por empresa (key/value JSONB).
+model CompanyParam {
+  companyId BigInt   @map("company_id")
+  key       String   @db.VarChar(80)
+  value     Json?    @db.JsonB
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, key])
+  @@map("company_param")
 }
 
 // HU-2.3 — token de recuperación de contraseña.
