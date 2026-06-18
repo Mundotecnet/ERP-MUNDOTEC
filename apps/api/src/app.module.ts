@@ -9,11 +9,14 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { BranchesModule } from './branches/branches.module';
 import { CompaniesModule } from './companies/companies.module';
 import { CurrenciesModule } from './currencies/currencies.module';
+import { CustomerCategoriesModule } from './customer-categories/customer-categories.module';
+import { DepartmentsModule } from './departments/departments.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { HealthModule } from './health/health.module';
 import { MailerModule } from './mailer/mailer.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ProductCategoriesModule } from './product-categories/product-categories.module';
 import { RbacModule } from './rbac/rbac.module';
 import { RequestContextInterceptor } from './request-context/request-context.interceptor';
 import { RequestContextModule } from './request-context/request-context.module';
@@ -42,6 +45,9 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     ExchangeRatesModule,
     TaxesModule,
     UnitsOfMeasureModule,
+    DepartmentsModule,
+    ProductCategoriesModule,
+    CustomerCategoriesModule,
   ],
   controllers: [AppController],
   providers: [

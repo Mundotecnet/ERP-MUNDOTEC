@@ -328,62 +328,77 @@ Permiso separado `users.assign-roles` (no `users.update`) para granularidad: un 
 
 ## Matriz endpoint → permiso (HU-4.4, cobertura)
 
-| Endpoint                  | Método | `@Public()` | Permiso requerido                               |
-| ------------------------- | ------ | ----------- | ----------------------------------------------- |
-| `/`                       | GET    | ✓           | —                                               |
-| `/health`                 | GET    | ✓           | —                                               |
-| `/auth/login`             | POST   | ✓           | —                                               |
-| `/auth/refresh`           | POST   | ✓           | —                                               |
-| `/auth/logout`            | POST   | ✓           | —                                               |
-| `/auth/forgot-password`   | POST   | ✓           | —                                               |
-| `/auth/reset-password`    | POST   | ✓           | —                                               |
-| `/auth/change-password`   | POST   | —           | (sólo Bearer; no requiere `@RequirePermission`) |
-| `/companies/current`      | GET    | —           | `company.read`                                  |
-| `/companies/current`      | PATCH  | —           | `company.update`                                |
-| `/branches`               | GET    | —           | `branch.read`                                   |
-| `/branches/:id`           | GET    | —           | `branch.read`                                   |
-| `/branches`               | POST   | —           | `branch.create`                                 |
-| `/branches/:id`           | PATCH  | —           | `branch.update`                                 |
-| `/branches/:id`           | DELETE | —           | `branch.delete`                                 |
-| `/currencies`             | GET    | —           | `catalogs.currency.read`                        |
-| `/currencies/:code`       | GET    | —           | `catalogs.currency.read`                        |
-| `/currencies`             | POST   | —           | `catalogs.currency.manage`                      |
-| `/currencies/:code`       | PATCH  | —           | `catalogs.currency.manage`                      |
-| `/currencies/:code`       | DELETE | —           | `catalogs.currency.manage`                      |
-| `/exchange-rates`         | GET    | —           | `catalogs.exchange-rate.read`                   |
-| `/exchange-rates/convert` | GET    | —           | `catalogs.exchange-rate.read`                   |
-| `/exchange-rates/:id`     | GET    | —           | `catalogs.exchange-rate.read`                   |
-| `/exchange-rates`         | POST   | —           | `catalogs.exchange-rate.manage`                 |
-| `/exchange-rates/:id`     | PATCH  | —           | `catalogs.exchange-rate.manage`                 |
-| `/exchange-rates/:id`     | DELETE | —           | `catalogs.exchange-rate.manage`                 |
-| `/taxes`                  | GET    | —           | `catalogs.tax.read`                             |
-| `/taxes/:id`              | GET    | —           | `catalogs.tax.read`                             |
-| `/taxes`                  | POST   | —           | `catalogs.tax.manage`                           |
-| `/taxes/:id`              | PATCH  | —           | `catalogs.tax.manage`                           |
-| `/taxes/:id`              | DELETE | —           | `catalogs.tax.manage`                           |
-| `/units-of-measure`       | GET    | —           | `catalogs.uom.read`                             |
-| `/units-of-measure/:id`   | GET    | —           | `catalogs.uom.read`                             |
-| `/units-of-measure`       | POST   | —           | `catalogs.uom.manage`                           |
-| `/units-of-measure/:id`   | PATCH  | —           | `catalogs.uom.manage`                           |
-| `/units-of-measure/:id`   | DELETE | —           | `catalogs.uom.manage`                           |
-| `/warehouses`             | GET    | —           | `warehouses.read`                               |
-| `/warehouses/:id`         | GET    | —           | `warehouses.read`                               |
-| `/warehouses`             | POST   | —           | `warehouses.create`                             |
-| `/warehouses/:id`         | PATCH  | —           | `warehouses.update`                             |
-| `/warehouses/:id`         | DELETE | —           | `warehouses.delete`                             |
-| `/users`                  | GET    | —           | `users.read`                                    |
-| `/users/:id`              | GET    | —           | `users.read`                                    |
-| `/users`                  | POST   | —           | `users.create`                                  |
-| `/users/:id`              | PATCH  | —           | `users.update`                                  |
-| `/users/:id`              | DELETE | —           | `users.delete`                                  |
-| `/users/:id/roles`        | PUT    | —           | `users.assign-roles`                            |
-| `/roles`                  | GET    | —           | `roles.read`                                    |
-| `/roles/:id`              | GET    | —           | `roles.read`                                    |
-| `/roles`                  | POST   | —           | `roles.create`                                  |
-| `/roles/:id`              | PATCH  | —           | `roles.update`                                  |
-| `/roles/:id`              | DELETE | —           | `roles.delete`                                  |
-| `/roles/:id/permissions`  | PUT    | —           | `roles.update`                                  |
-| `/permissions`            | GET    | —           | `permissions.read`                              |
+| Endpoint                   | Método | `@Public()` | Permiso requerido                               |
+| -------------------------- | ------ | ----------- | ----------------------------------------------- |
+| `/`                        | GET    | ✓           | —                                               |
+| `/health`                  | GET    | ✓           | —                                               |
+| `/auth/login`              | POST   | ✓           | —                                               |
+| `/auth/refresh`            | POST   | ✓           | —                                               |
+| `/auth/logout`             | POST   | ✓           | —                                               |
+| `/auth/forgot-password`    | POST   | ✓           | —                                               |
+| `/auth/reset-password`     | POST   | ✓           | —                                               |
+| `/auth/change-password`    | POST   | —           | (sólo Bearer; no requiere `@RequirePermission`) |
+| `/companies/current`       | GET    | —           | `company.read`                                  |
+| `/companies/current`       | PATCH  | —           | `company.update`                                |
+| `/branches`                | GET    | —           | `branch.read`                                   |
+| `/branches/:id`            | GET    | —           | `branch.read`                                   |
+| `/branches`                | POST   | —           | `branch.create`                                 |
+| `/branches/:id`            | PATCH  | —           | `branch.update`                                 |
+| `/branches/:id`            | DELETE | —           | `branch.delete`                                 |
+| `/currencies`              | GET    | —           | `catalogs.currency.read`                        |
+| `/currencies/:code`        | GET    | —           | `catalogs.currency.read`                        |
+| `/currencies`              | POST   | —           | `catalogs.currency.manage`                      |
+| `/currencies/:code`        | PATCH  | —           | `catalogs.currency.manage`                      |
+| `/currencies/:code`        | DELETE | —           | `catalogs.currency.manage`                      |
+| `/exchange-rates`          | GET    | —           | `catalogs.exchange-rate.read`                   |
+| `/exchange-rates/convert`  | GET    | —           | `catalogs.exchange-rate.read`                   |
+| `/exchange-rates/:id`      | GET    | —           | `catalogs.exchange-rate.read`                   |
+| `/exchange-rates`          | POST   | —           | `catalogs.exchange-rate.manage`                 |
+| `/exchange-rates/:id`      | PATCH  | —           | `catalogs.exchange-rate.manage`                 |
+| `/exchange-rates/:id`      | DELETE | —           | `catalogs.exchange-rate.manage`                 |
+| `/taxes`                   | GET    | —           | `catalogs.tax.read`                             |
+| `/taxes/:id`               | GET    | —           | `catalogs.tax.read`                             |
+| `/taxes`                   | POST   | —           | `catalogs.tax.manage`                           |
+| `/taxes/:id`               | PATCH  | —           | `catalogs.tax.manage`                           |
+| `/taxes/:id`               | DELETE | —           | `catalogs.tax.manage`                           |
+| `/units-of-measure`        | GET    | —           | `catalogs.uom.read`                             |
+| `/units-of-measure/:id`    | GET    | —           | `catalogs.uom.read`                             |
+| `/units-of-measure`        | POST   | —           | `catalogs.uom.manage`                           |
+| `/units-of-measure/:id`    | PATCH  | —           | `catalogs.uom.manage`                           |
+| `/units-of-measure/:id`    | DELETE | —           | `catalogs.uom.manage`                           |
+| `/departments`             | GET    | —           | `catalogs.department.read`                      |
+| `/departments/:id`         | GET    | —           | `catalogs.department.read`                      |
+| `/departments`             | POST   | —           | `catalogs.department.manage`                    |
+| `/departments/:id`         | PATCH  | —           | `catalogs.department.manage`                    |
+| `/departments/:id`         | DELETE | —           | `catalogs.department.manage`                    |
+| `/product-categories`      | GET    | —           | `catalogs.product-category.read`                |
+| `/product-categories/:id`  | GET    | —           | `catalogs.product-category.read`                |
+| `/product-categories`      | POST   | —           | `catalogs.product-category.manage`              |
+| `/product-categories/:id`  | PATCH  | —           | `catalogs.product-category.manage`              |
+| `/product-categories/:id`  | DELETE | —           | `catalogs.product-category.manage`              |
+| `/customer-categories`     | GET    | —           | `catalogs.customer-category.read`               |
+| `/customer-categories/:id` | GET    | —           | `catalogs.customer-category.read`               |
+| `/customer-categories`     | POST   | —           | `catalogs.customer-category.manage`             |
+| `/customer-categories/:id` | PATCH  | —           | `catalogs.customer-category.manage`             |
+| `/customer-categories/:id` | DELETE | —           | `catalogs.customer-category.manage`             |
+| `/warehouses`              | GET    | —           | `warehouses.read`                               |
+| `/warehouses/:id`          | GET    | —           | `warehouses.read`                               |
+| `/warehouses`              | POST   | —           | `warehouses.create`                             |
+| `/warehouses/:id`          | PATCH  | —           | `warehouses.update`                             |
+| `/warehouses/:id`          | DELETE | —           | `warehouses.delete`                             |
+| `/users`                   | GET    | —           | `users.read`                                    |
+| `/users/:id`               | GET    | —           | `users.read`                                    |
+| `/users`                   | POST   | —           | `users.create`                                  |
+| `/users/:id`               | PATCH  | —           | `users.update`                                  |
+| `/users/:id`               | DELETE | —           | `users.delete`                                  |
+| `/users/:id/roles`         | PUT    | —           | `users.assign-roles`                            |
+| `/roles`                   | GET    | —           | `roles.read`                                    |
+| `/roles/:id`               | GET    | —           | `roles.read`                                    |
+| `/roles`                   | POST   | —           | `roles.create`                                  |
+| `/roles/:id`               | PATCH  | —           | `roles.update`                                  |
+| `/roles/:id`               | DELETE | —           | `roles.delete`                                  |
+| `/roles/:id/permissions`   | PUT    | —           | `roles.update`                                  |
+| `/permissions`             | GET    | —           | `permissions.read`                              |
 
 Cobertura: el `JwtAuthGuard` global rechaza con 401 a quien no traiga `Bearer`; el `PermissionsGuard` rechaza con 403 a quien no tenga el permiso declarado. Para endpoints públicos, decora con `@Public()`.
 
@@ -421,6 +436,13 @@ Es **solo lectura** — nuevos códigos entran vía seed/migración, no por API.
 
 **Sprint 3 completo** ✓ — Roles/permisos, usuarios, sucursales y almacenes listos.
 
+## Estado del Sprint 4
+
+- [x] **PR-13 — HU-5.1 + 5.2 + 5.3**: Currencies, ExchangeRates, Taxes, UnitsOfMeasure.
+- [x] **PR-14 — HU-5.4 + 5.5**: Departments + ProductCategories jerárquicas + CustomerCategories.
+- [ ] PR-15 — HU-6.3: Parámetros generales (tabla `company_param`).
+- [ ] PR-16 — HU-6.2: Shell frontend web-erp.
+
 ## Catálogos base (HU-5.1, 5.2, 5.3)
 
 Backend del Sprint 4. Se distingue **global** (sin `company_id`) de **per-tenant** (con `company_id`):
@@ -432,7 +454,17 @@ Backend del Sprint 4. Se distingue **global** (sin `company_id`) de **per-tenant
 | Taxes          | per-tenant | `GET/POST/GET:id/PATCH/DELETE /taxes`                                          | `rate` ∈ [0, 1]. Cross-tenant → 404.                                                                                                       |
 | UnitsOfMeasure | global     | `GET/POST/GET:id/PATCH/DELETE /units-of-measure`                               | `code` único, normalizado a mayúsculas, admite `[A-Z0-9_-]`.                                                                               |
 
-Próximo: Sprint 4 continúa con jerárquicas (HU-5.4, HU-5.5), parámetros (HU-6.3) y shell frontend (HU-6.2).
+## Catálogos jerárquicos y categoría de cliente (HU-5.4, 5.5)
+
+Tres catálogos **per-tenant** que completan la fase de catálogos del backend:
+
+| Catálogo           | Endpoints                                           | Notas                                                                                                                                                                                              |
+| ------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Departments        | `GET/POST/GET:id/PATCH/DELETE /departments`         | UNIQUE (`company_id`, `name`). Duplicado → 409.                                                                                                                                                    |
+| ProductCategories  | `GET/POST/GET:id/PATCH/DELETE /product-categories`  | **Jerárquico** con `parentId` opcional. Auto-referencia → 400. Cambio que formaría ciclo → 400 (detección con cursor ascendente). Parent de otra empresa → 400. DELETE 409 si tiene subcategorías. |
+| CustomerCategories | `GET/POST/GET:id/PATCH/DELETE /customer-categories` | `code` VARCHAR(5) normalizado a mayúsculas (`[A-Z0-9]{1,5}`). UNIQUE (`company_id`, `code`).                                                                                                       |
+
+Próximo: Sprint 4 continúa con parámetros (HU-6.3) y shell frontend (HU-6.2).
 
 ## Convenciones
 
