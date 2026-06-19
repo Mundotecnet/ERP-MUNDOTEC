@@ -1,4 +1,4 @@
-import { Building2, Coins, FileBadge, Home, Settings, Users } from 'lucide-react';
+import { Box, Building2, Coins, FileBadge, Home, Layers, Settings, Users } from 'lucide-react';
 import type { ComponentType } from 'react';
 
 export interface NavEntry {
@@ -16,6 +16,8 @@ export interface NavEntry {
  */
 export const NAV_ENTRIES: NavEntry[] = [
   { label: 'Dashboard', to: '/', icon: Home },
+  { label: 'Productos', to: '/products', icon: Box, permission: 'catalogs.product.read' },
+  { label: 'Existencias', to: '/stock', icon: Layers, permission: 'inventory.stock.read' },
   { label: 'Sucursales', to: '/branches', icon: Building2, permission: 'branch.read' },
   { label: 'Usuarios', to: '/users', icon: Users, permission: 'users.read' },
   { label: 'Roles', to: '/roles', icon: FileBadge, permission: 'roles.read' },

@@ -454,8 +454,7 @@ Es **solo lectura** — nuevos códigos entran vía seed/migración, no por API.
 Ver [`docs/backlog-fase2.md`](docs/backlog-fase2.md) para el plan completo de la Fase 2.
 
 - [x] **PR-18 — HU-7.1**: Backend de productos (modelo `product` + CRUD + soft-delete + validación cruzada de FKs + permisos `catalogs.product.read/manage`).
-- [ ] PR-19 — HU-7.2: Endpoint read-only de stock por almacén.
-- [ ] PR-20 — HU-7.3: Página `/productos` en `web-erp`.
+- [x] **PR-19 — HU-7.2 + HU-7.3**: Endpoint read-only `GET /stock` con filtros (modelo `Stock` + permiso `inventory.stock.read`) y páginas `/products` (CRUD desde UI) y `/stock` (lectura filtrable) en `web-erp`.
 
 ## Frontend `web-erp` (HU-6.2)
 
