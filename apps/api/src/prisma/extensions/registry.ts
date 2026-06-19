@@ -17,6 +17,7 @@ export const AUDITED_MODELS = new Set<string>([
   'Department',
   'ProductCategory',
   'CustomerCategory',
+  'Product',
 ]);
 
 /**
@@ -32,11 +33,12 @@ export const TENANT_MODELS = new Set<string>([
   'Department',
   'ProductCategory',
   'CustomerCategory',
+  'Product',
 ]);
 
 /**
  * Modelos donde `delete` se transforma en `update({ deletedAt: now() })` y las
- * lecturas filtran `deletedAt: null`. Sólo `AppUser` tiene la columna
- * `deleted_at` en `erp_schema.sql`.
+ * lecturas filtran `deletedAt: null`. Sólo los modelos con columna `deleted_at`
+ * en `erp_schema.sql` pertenecen a este set.
  */
-export const SOFT_DELETE_MODELS = new Set<string>(['AppUser']);
+export const SOFT_DELETE_MODELS = new Set<string>(['AppUser', 'Product']);
