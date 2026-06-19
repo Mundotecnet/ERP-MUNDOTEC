@@ -136,6 +136,13 @@ const PERMISSIONS: PermissionSpec[] = [
     module: 'catalogs',
     description: 'Crear/editar/eliminar productos',
   },
+
+  // --- Inventario (HU-7.2) ---
+  {
+    code: 'inventory.stock.read',
+    module: 'inventory',
+    description: 'Ver existencias por almacén',
+  },
 ];
 
 async function seedCurrencies(): Promise<void> {

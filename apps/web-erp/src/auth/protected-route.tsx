@@ -2,11 +2,18 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
 import { useAuth } from './auth-context';
 
+interface ProtectedRouteProps {
+  permission?: string;
+  /** Si se pasa, se renderiza directamente (gate de ruta concreta). En caso
+   *  contrario se renderiza el `<Outlet />` para gatear un sub-tree. */
+  children?: React.ReactNode;
+}
+
 /**
  * Bloquea rutas hijas si no hay sesión activa. Si la sesión todavía está
  * cargando (`/auth/me` en curso), no redirige.
  */
-export function ProtectedRoute({ permission }: { permission?: string }): JSX.Element {
+export function ProtectedRoute({ permission, children }: ProtectedRouteProps): JSX.Element {
   const { user, loading, hasPermission } = useAuth();
   const location = useLocation();
 
@@ -32,5 +39,5 @@ export function ProtectedRoute({ permission }: { permission?: string }): JSX.Ele
       </div>
     );
   }
-  return <Outlet />;
+  return <>{children ?? <Outlet />}</>;
 }

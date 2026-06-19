@@ -79,6 +79,5 @@ Primer CRUD real con formulario en la UI:
 
 ### Plan de PRs del Sprint 5
 
-- **PR-18**: backend HU-7.1 (modelo Product + migración + módulo NestJS + permisos + tests).
-- **PR-19**: backend HU-7.2 (endpoint de stock read-only + tests).
-- **PR-20**: frontend HU-7.3 (página productos con CRUD y página de stock).
+- **PR-18** ✓ backend HU-7.1 (modelo Product + migración + módulo NestJS + permisos + tests).
+- **PR-19** ✓ backend HU-7.2 (stock snapshot read-only) + frontend HU-7.3 (página `/products` con CRUD y `/stock` con filtros).
