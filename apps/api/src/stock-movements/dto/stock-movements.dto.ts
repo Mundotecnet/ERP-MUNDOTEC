@@ -146,6 +146,44 @@ export function parseCreateMovementBody(body: CreateMovementBody): ParsedCreateM
   };
 }
 
+export interface TransferMovementBody {
+  productId?: unknown;
+  fromWarehouseId?: unknown;
+  toWarehouseId?: unknown;
+  quantity?: unknown;
+  movementDate?: unknown;
+  notes?: unknown;
+}
+
+export interface ParsedTransferMovement {
+  productId: bigint;
+  fromWarehouseId: bigint;
+  toWarehouseId: bigint;
+  /** Cantidad positiva en string decimal (4 dec). */
+  quantity: string;
+  movementDate: Date | null;
+  notes: string | null;
+}
+
+function positiveDecimalString(value: unknown, name: string): string {
+  const s = signedDecimalString(value, name);
+  if (s.startsWith('-') || /^0(\.0+)?$/.test(s)) {
+    throw new BadRequestException(`Campo "${name}" debe ser un decimal positivo mayor que cero.`);
+  }
+  return s;
+}
+
+export function parseTransferMovementBody(body: TransferMovementBody): ParsedTransferMovement {
+  return {
+    productId: requireBigInt(body.productId, 'productId'),
+    fromWarehouseId: requireBigInt(body.fromWarehouseId, 'fromWarehouseId'),
+    toWarehouseId: requireBigInt(body.toWarehouseId, 'toWarehouseId'),
+    quantity: positiveDecimalString(body.quantity, 'quantity'),
+    movementDate: optionalDate(body.movementDate, 'movementDate'),
+    notes: optionalString(body.notes, 'notes', 250),
+  };
+}
+
 export interface MovementListQuery {
   productId?: string;
   warehouseId?: string;
