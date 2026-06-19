@@ -143,6 +143,18 @@ const PERMISSIONS: PermissionSpec[] = [
     module: 'inventory',
     description: 'Ver existencias por almacén',
   },
+
+  // --- Kardex / movimientos (HU-8.1) ---
+  {
+    code: 'inventory.movement.read',
+    module: 'inventory',
+    description: 'Ver el kardex de movimientos de inventario',
+  },
+  {
+    code: 'inventory.movement.manage',
+    module: 'inventory',
+    description: 'Registrar movimientos de inventario (entradas, salidas, ajustes)',
+  },
 ];
 
 async function seedCurrencies(): Promise<void> {

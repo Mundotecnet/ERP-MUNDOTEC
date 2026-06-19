@@ -456,6 +456,14 @@ Ver [`docs/backlog-fase2.md`](docs/backlog-fase2.md) para el plan completo de la
 - [x] **PR-18 — HU-7.1**: Backend de productos (modelo `product` + CRUD + soft-delete + validación cruzada de FKs + permisos `catalogs.product.read/manage`).
 - [x] **PR-19 — HU-7.2 + HU-7.3**: Endpoint read-only `GET /stock` con filtros (modelo `Stock` + permiso `inventory.stock.read`) y páginas `/products` (CRUD desde UI) y `/stock` (lectura filtrable) en `web-erp`.
 
+**Sprint 5 completo** ✓ — Catálogo de productos administrable desde la UI y stock-snapshot disponible.
+
+## Estado del Sprint 6 (Fase 2 — Inventario / Kardex)
+
+- [x] **PR-20 — HU-8.1 + HU-8.2**: Movimientos de inventario (modelo `StockMovement` + `POST /stock-movements` con transacción Prisma y costo promedio ponderado, `GET /stock-movements` con filtros). Permisos `inventory.movement.read/manage`.
+- [ ] PR-21 — HU-8.3: Transferencias entre almacenes (2 movimientos atómicos en una transacción).
+- [ ] PR-22 — HU-8.4: UI con form de movimiento y vista de kardex por producto.
+
 ## Frontend `web-erp` (HU-6.2)
 
 Shell de la aplicación interna construido con React 18 + Vite + Tailwind CSS + shadcn-style primitives + react-router-dom 6 + TanStack Query 5 + react-hook-form + zod + axios.
