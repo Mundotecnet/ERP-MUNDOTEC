@@ -18,6 +18,7 @@ export const AUDITED_MODELS = new Set<string>([
   'ProductCategory',
   'CustomerCategory',
   'Product',
+  'StockMovement',
 ]);
 
 /**
@@ -34,6 +35,7 @@ export const TENANT_MODELS = new Set<string>([
   'ProductCategory',
   'CustomerCategory',
   'Product',
+  'StockMovement',
 ]);
 
 /**

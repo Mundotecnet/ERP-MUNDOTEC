@@ -21,6 +21,7 @@ import { ProductCategoriesModule } from './product-categories/product-categories
 import { ProductsModule } from './products/products.module';
 import { RbacModule } from './rbac/rbac.module';
 import { StockModule } from './stock/stock.module';
+import { StockMovementsModule } from './stock-movements/stock-movements.module';
 import { RequestContextInterceptor } from './request-context/request-context.interceptor';
 import { RequestContextModule } from './request-context/request-context.module';
 import { RolesModule } from './roles/roles.module';
@@ -52,6 +53,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     ProductCategoriesModule,
     ProductsModule,
     StockModule,
+    StockMovementsModule,
     CustomerCategoriesModule,
     CompanyParamsModule,
   ],
