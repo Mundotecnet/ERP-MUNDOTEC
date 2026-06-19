@@ -18,6 +18,7 @@ import { MailerModule } from './mailer/mailer.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductCategoriesModule } from './product-categories/product-categories.module';
+import { ProductsModule } from './products/products.module';
 import { RbacModule } from './rbac/rbac.module';
 import { RequestContextInterceptor } from './request-context/request-context.interceptor';
 import { RequestContextModule } from './request-context/request-context.module';
@@ -48,6 +49,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     UnitsOfMeasureModule,
     DepartmentsModule,
     ProductCategoriesModule,
+    ProductsModule,
     CustomerCategoriesModule,
     CompanyParamsModule,
   ],

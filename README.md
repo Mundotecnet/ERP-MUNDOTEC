@@ -449,6 +449,14 @@ Es **solo lectura** — nuevos códigos entran vía seed/migración, no por API.
 
 **Sprint 4 completo** ✓ — Catálogos, parámetros y shell de UI listos. **Fase 1 cerrada**.
 
+## Estado del Sprint 5 (Fase 2)
+
+Ver [`docs/backlog-fase2.md`](docs/backlog-fase2.md) para el plan completo de la Fase 2.
+
+- [x] **PR-18 — HU-7.1**: Backend de productos (modelo `product` + CRUD + soft-delete + validación cruzada de FKs + permisos `catalogs.product.read/manage`).
+- [ ] PR-19 — HU-7.2: Endpoint read-only de stock por almacén.
+- [ ] PR-20 — HU-7.3: Página `/productos` en `web-erp`.
+
 ## Frontend `web-erp` (HU-6.2)
 
 Shell de la aplicación interna construido con React 18 + Vite + Tailwind CSS + shadcn-style primitives + react-router-dom 6 + TanStack Query 5 + react-hook-form + zod + axios.

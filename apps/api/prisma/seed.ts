@@ -128,6 +128,14 @@ const PERMISSIONS: PermissionSpec[] = [
     module: 'catalogs',
     description: 'Crear/editar/eliminar categorías de cliente',
   },
+
+  // --- Productos (HU-7.1) ---
+  { code: 'catalogs.product.read', module: 'catalogs', description: 'Ver productos' },
+  {
+    code: 'catalogs.product.manage',
+    module: 'catalogs',
+    description: 'Crear/editar/eliminar productos',
+  },
 ];
 
 async function seedCurrencies(): Promise<void> {
