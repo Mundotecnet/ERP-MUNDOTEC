@@ -466,6 +466,13 @@ Ver [`docs/backlog-fase2.md`](docs/backlog-fase2.md) para el plan completo de la
 
 **Sprint 6 completo** ✓ — Kardex con CPP, transferencias atómicas y UI integrada.
 
+## Estado del Sprint 7 (Fase 2 — Compras)
+
+- [x] **PR-23 — HU-9.1**: Terceros (modelo `Partner` + `PartnerContact` con cascade; CRUD con filtro por tipo `CUSTOMER`/`SUPPLIER`/`BOTH` y búsqueda `?q=`; CRUD de contactos). Permisos `partners.read/manage`.
+- [ ] PR-24 — HU-9.2: Órdenes de compra (estados DRAFT → APPROVED, cálculo de totales con moneda + tipo de cambio).
+- [ ] PR-25 — HU-9.3: Recepciones (alimentan el kardex con `StockMovement` IN atómicos y avanzan `received_qty`).
+- [ ] PR-26 — HU-9.4: UI Compras.
+
 ## Frontend `web-erp` (HU-6.2)
 
 Shell de la aplicación interna construido con React 18 + Vite + Tailwind CSS + shadcn-style primitives + react-router-dom 6 + TanStack Query 5 + react-hook-form + zod + axios.
