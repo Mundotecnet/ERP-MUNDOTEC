@@ -13,6 +13,7 @@ import { CurrenciesModule } from './currencies/currencies.module';
 import { CustomerCategoriesModule } from './customer-categories/customer-categories.module';
 import { DepartmentsModule } from './departments/departments.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
+import { GoodsReceiptsModule } from './goods-receipts/goods-receipts.module';
 import { HealthModule } from './health/health.module';
 import { MailerModule } from './mailer/mailer.module';
 import { PartnersModule } from './partners/partners.module';
@@ -60,6 +61,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     CompanyParamsModule,
     PartnersModule,
     PurchaseOrdersModule,
+    GoodsReceiptsModule,
   ],
   controllers: [AppController],
   providers: [

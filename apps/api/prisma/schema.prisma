@@ -55,6 +55,7 @@ model Company {
   stockMovements    StockMovement[]
   partners          Partner[]
   purchaseOrders    PurchaseOrder[]
+  goodsReceipts     GoodsReceipt[]
 
   @@map("company")
 }
@@ -90,6 +91,7 @@ model Warehouse {
   branch         Branch?         @relation(fields: [branchId], references: [id])
   stocks         Stock[]
   stockMovements StockMovement[]
+  goodsReceipts  GoodsReceipt[]
 
   @@unique([companyId, code])
   @@map("warehouse")
@@ -120,6 +122,7 @@ model AppUser {
   passwordResetTokens PasswordResetToken[]
   stockMovements      StockMovement[]
   purchaseOrders      PurchaseOrder[]
+  goodsReceipts       GoodsReceipt[]
 
   @@unique([companyId, username])
   @@unique([companyId, email])
@@ -357,6 +360,7 @@ model Product {
   stocks            Stock[]
   stockMovements    StockMovement[]
   purchaseOrderLines PurchaseOrderLine[]
+  goodsReceiptLines GoodsReceiptLine[]
 
   @@unique([companyId, sku])
   @@index([barcode])
@@ -507,11 +511,12 @@ model PurchaseOrder {
   createdBy     BigInt?  @map("created_by")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  company  Company             @relation(fields: [companyId], references: [id])
-  branch   Branch?             @relation(fields: [branchId], references: [id])
-  supplier Partner             @relation(fields: [supplierId], references: [id])
-  user     AppUser?            @relation(fields: [createdBy], references: [id])
-  lines    PurchaseOrderLine[]
+  company       Company             @relation(fields: [companyId], references: [id])
+  branch        Branch?             @relation(fields: [branchId], references: [id])
+  supplier      Partner             @relation(fields: [supplierId], references: [id])
+  user          AppUser?            @relation(fields: [createdBy], references: [id])
+  lines         PurchaseOrderLine[]
+  goodsReceipts GoodsReceipt[]
 
   @@unique([companyId, orderNumber])
   @@map("purchase_order")
@@ -531,4 +536,43 @@ model PurchaseOrderLine {
   product       Product       @relation(fields: [productId], references: [id])
 
   @@map("purchase_order_line")
+}
+
+// HU-9.3 — Recepción de mercancía. Una recepción **es** la confirmación: el
+// POST inserta header + líneas, alimenta el kardex (StockMovement IN por línea)
+// y avanza `received_qty` de las líneas de la OC asociada (si hay) en una
+// sola transacción Prisma. Si todas las líneas de la OC quedan completas, la
+// OC pasa a RECEIVED en la misma tx. No hay PATCH ni DELETE: las recepciones
+// son inmutables tras la creación; las correcciones se hacen vía devoluciones.
+model GoodsReceipt {
+  id              BigInt   @id @default(autoincrement())
+  companyId       BigInt   @map("company_id")
+  purchaseOrderId BigInt?  @map("purchase_order_id")
+  warehouseId     BigInt   @map("warehouse_id")
+  receiptNumber   String   @map("receipt_number") @db.VarChar(30)
+  receiptDate     DateTime @default(now()) @map("receipt_date") @db.Date
+  createdBy       BigInt?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  company       Company            @relation(fields: [companyId], references: [id])
+  purchaseOrder PurchaseOrder?     @relation(fields: [purchaseOrderId], references: [id])
+  warehouse     Warehouse          @relation(fields: [warehouseId], references: [id])
+  user          AppUser?           @relation(fields: [createdBy], references: [id])
+  lines         GoodsReceiptLine[]
+
+  @@unique([companyId, receiptNumber])
+  @@map("goods_receipt")
+}
+
+model GoodsReceiptLine {
+  id             BigInt  @id @default(autoincrement())
+  goodsReceiptId BigInt  @map("goods_receipt_id")
+  productId      BigInt  @map("product_id")
+  quantity       Decimal @db.Decimal(18, 4)
+  unitCost       Decimal @map("unit_cost") @db.Decimal(18, 4)
+
+  goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id])
+
+  @@map("goods_receipt_line")
 }

@@ -179,6 +179,18 @@ const PERMISSIONS: PermissionSpec[] = [
     module: 'purchases',
     description: 'Crear/editar/eliminar órdenes de compra y aprobarlas o cancelarlas',
   },
+
+  // --- Compras / recepciones (HU-9.3) ---
+  {
+    code: 'purchases.receipt.read',
+    module: 'purchases',
+    description: 'Ver recepciones de mercancía',
+  },
+  {
+    code: 'purchases.receipt.manage',
+    module: 'purchases',
+    description: 'Registrar recepciones de mercancía (alimentan el kardex)',
+  },
 ];
 
 async function seedCurrencies(): Promise<void> {
