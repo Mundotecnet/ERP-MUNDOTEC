@@ -167,6 +167,18 @@ const PERMISSIONS: PermissionSpec[] = [
     module: 'partners',
     description: 'Crear/editar/eliminar clientes y proveedores y sus contactos',
   },
+
+  // --- Compras / órdenes (HU-9.2) ---
+  {
+    code: 'purchases.po.read',
+    module: 'purchases',
+    description: 'Ver órdenes de compra',
+  },
+  {
+    code: 'purchases.po.manage',
+    module: 'purchases',
+    description: 'Crear/editar/eliminar órdenes de compra y aprobarlas o cancelarlas',
+  },
 ];
 
 async function seedCurrencies(): Promise<void> {

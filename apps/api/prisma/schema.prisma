@@ -54,6 +54,7 @@ model Company {
   products          Product[]
   stockMovements    StockMovement[]
   partners          Partner[]
+  purchaseOrders    PurchaseOrder[]
 
   @@map("company")
 }
@@ -68,8 +69,9 @@ model Branch {
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  company    Company     @relation(fields: [companyId], references: [id])
-  warehouses Warehouse[]
+  company        Company         @relation(fields: [companyId], references: [id])
+  warehouses     Warehouse[]
+  purchaseOrders PurchaseOrder[]
 
   @@unique([companyId, code])
   @@map("branch")
@@ -117,6 +119,7 @@ model AppUser {
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
   stockMovements      StockMovement[]
+  purchaseOrders      PurchaseOrder[]
 
   @@unique([companyId, username])
   @@unique([companyId, email])
@@ -346,13 +349,14 @@ model Product {
   departmentId      BigInt?   @map("department_id")
   defaultSupplierId BigInt?   @map("default_supplier_id")
 
-  company        Company          @relation(fields: [companyId], references: [id])
-  category       ProductCategory? @relation(fields: [categoryId], references: [id])
-  uom            UnitOfMeasure    @relation(fields: [uomId], references: [id])
-  tax            Tax?             @relation(fields: [taxId], references: [id])
-  department     Department?      @relation(fields: [departmentId], references: [id])
-  stocks         Stock[]
-  stockMovements StockMovement[]
+  company           Company             @relation(fields: [companyId], references: [id])
+  category          ProductCategory?    @relation(fields: [categoryId], references: [id])
+  uom               UnitOfMeasure       @relation(fields: [uomId], references: [id])
+  tax               Tax?                @relation(fields: [taxId], references: [id])
+  department        Department?         @relation(fields: [departmentId], references: [id])
+  stocks            Stock[]
+  stockMovements    StockMovement[]
+  purchaseOrderLines PurchaseOrderLine[]
 
   @@unique([companyId, sku])
   @@index([barcode])
@@ -456,9 +460,10 @@ model Partner {
   // partner a una categoría de cliente para descuentos/segmentación.
   customerCategoryId BigInt?   @map("customer_category_id")
 
-  company          Company           @relation(fields: [companyId], references: [id])
-  contacts         PartnerContact[]
-  customerCategory CustomerCategory? @relation(fields: [customerCategoryId], references: [id])
+  company           Company           @relation(fields: [companyId], references: [id])
+  contacts          PartnerContact[]
+  customerCategory  CustomerCategory? @relation(fields: [customerCategoryId], references: [id])
+  purchaseOrders    PurchaseOrder[]
 
   @@unique([companyId, code])
   @@index([legalName], map: "idx_partner_name")
@@ -476,4 +481,54 @@ model PartnerContact {
   partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@map("partner_contact")
+}
+
+// HU-9.2 — Cabecera de orden de compra.
+// Estados: DRAFT (editable) → APPROVED → RECEIVED (lo setea PR-25 al recibir
+// la última línea pendiente) o CANCELLED. Los totales son calculados por el
+// service (subtotal, tax_amount, total en moneda del documento; base_total
+// en moneda base de la empresa).
+model PurchaseOrder {
+  id            BigInt   @id @default(autoincrement())
+  companyId     BigInt   @map("company_id")
+  branchId      BigInt?  @map("branch_id")
+  supplierId    BigInt   @map("supplier_id")
+  orderNumber   String   @map("order_number") @db.VarChar(30)
+  orderDate     DateTime @default(now()) @map("order_date") @db.Date
+  expectedDate  DateTime? @map("expected_date") @db.Date
+  status        String   @default("DRAFT") @db.VarChar(20)
+  currencyCode  String   @default("USD") @map("currency_code") @db.Char(3)
+  exchangeRate  Decimal  @default(1) @map("exchange_rate") @db.Decimal(18, 6)
+  subtotal      Decimal  @default(0) @db.Decimal(18, 4)
+  taxAmount     Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 4)
+  total         Decimal  @default(0) @db.Decimal(18, 4)
+  baseTotal     Decimal  @default(0) @map("base_total") @db.Decimal(18, 4)
+  notes         String?  @db.VarChar(300)
+  createdBy     BigInt?  @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  company  Company             @relation(fields: [companyId], references: [id])
+  branch   Branch?             @relation(fields: [branchId], references: [id])
+  supplier Partner             @relation(fields: [supplierId], references: [id])
+  user     AppUser?            @relation(fields: [createdBy], references: [id])
+  lines    PurchaseOrderLine[]
+
+  @@unique([companyId, orderNumber])
+  @@map("purchase_order")
+}
+
+model PurchaseOrderLine {
+  id              BigInt  @id @default(autoincrement())
+  purchaseOrderId BigInt  @map("purchase_order_id")
+  productId       BigInt  @map("product_id")
+  quantity        Decimal @db.Decimal(18, 4)
+  receivedQty     Decimal @default(0) @map("received_qty") @db.Decimal(18, 4)
+  unitCost        Decimal @map("unit_cost") @db.Decimal(18, 4)
+  taxRate         Decimal @default(0) @map("tax_rate") @db.Decimal(7, 4)
+  lineTotal       Decimal @map("line_total") @db.Decimal(18, 4)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+
+  @@map("purchase_order_line")
 }
