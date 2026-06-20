@@ -6,5 +6,6 @@ import { StockMovementsService } from './stock-movements.service';
 @Module({
   controllers: [StockMovementsController],
   providers: [StockMovementsService],
+  exports: [StockMovementsService],
 })
 export class StockMovementsModule {}

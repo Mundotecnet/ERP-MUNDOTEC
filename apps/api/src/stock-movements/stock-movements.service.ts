@@ -53,7 +53,7 @@ interface MovementRow {
 }
 
 /** Datos atómicos para `applyMovementInTx`. Cantidad es **signed** (string). */
-interface ApplyMovementInput {
+export interface ApplyMovementInput {
   companyId: bigint;
   userId: bigint;
   productId: bigint;
@@ -193,7 +193,13 @@ export class StockMovementsService {
    *  5. Inserta el movimiento con `balance_qty = qty_new`.
    *  6. `upsert` en `stock` con los nuevos valores.
    */
-  private async applyMovementInTx(
+  /**
+   * Público para que otros services (goods-receipts, futuro sales-invoices)
+   * puedan invocarlo dentro de su propia `$transaction` sin reimplementar
+   * la lógica de CPP. Asume que el caller ya validó los pre-requisitos
+   * propios (estado del documento padre, etc.).
+   */
+  async applyMovementInTx(
     tx: Prisma.TransactionClient,
     input: ApplyMovementInput,
   ): Promise<MovementView> {
