@@ -15,6 +15,7 @@ import { DepartmentsModule } from './departments/departments.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { HealthModule } from './health/health.module';
 import { MailerModule } from './mailer/mailer.module';
+import { PartnersModule } from './partners/partners.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductCategoriesModule } from './product-categories/product-categories.module';
@@ -56,6 +57,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     StockMovementsModule,
     CustomerCategoriesModule,
     CompanyParamsModule,
+    PartnersModule,
   ],
   controllers: [AppController],
   providers: [

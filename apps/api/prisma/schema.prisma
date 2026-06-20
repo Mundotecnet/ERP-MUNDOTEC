@@ -53,6 +53,7 @@ model Company {
   params            CompanyParam[]
   products          Product[]
   stockMovements    StockMovement[]
+  partners          Partner[]
 
   @@map("company")
 }
@@ -423,8 +424,56 @@ model CustomerCategory {
   code      String @db.VarChar(5)
   name      String @db.VarChar(80)
 
-  company Company @relation(fields: [companyId], references: [id])
+  company  Company   @relation(fields: [companyId], references: [id])
+  partners Partner[]
 
   @@unique([companyId, code])
   @@map("customer_category")
+}
+
+// HU-9.1 — Terceros: clientes, proveedores y ambos.
+// `partner_type` controla en qué módulos aparece (CUSTOMER, SUPPLIER, BOTH).
+// Soft-delete: el partner no se borra físicamente (`deleted_at`).
+model Partner {
+  id                 BigInt    @id @default(autoincrement())
+  companyId          BigInt    @map("company_id")
+  partnerType        String    @map("partner_type") @db.VarChar(10)
+  code               String?   @db.VarChar(30)
+  legalName          String    @map("legal_name") @db.VarChar(200)
+  tradeName          String?   @map("trade_name") @db.VarChar(200)
+  taxId              String?   @map("tax_id") @db.VarChar(50)
+  email              String?   @db.VarChar(150)
+  phone              String?   @db.VarChar(50)
+  address            String?   @db.VarChar(300)
+  currencyCode       String    @default("USD") @map("currency_code") @db.Char(3)
+  creditLimit        Decimal   @default(0) @map("credit_limit") @db.Decimal(18, 4)
+  creditDays         Int       @default(0) @map("credit_days")
+  isActive           Boolean   @default(true) @map("is_active")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
+  // Extensión sección de ventas/categorización (canónico l.1502). Asocia el
+  // partner a una categoría de cliente para descuentos/segmentación.
+  customerCategoryId BigInt?   @map("customer_category_id")
+
+  company          Company           @relation(fields: [companyId], references: [id])
+  contacts         PartnerContact[]
+  customerCategory CustomerCategory? @relation(fields: [customerCategoryId], references: [id])
+
+  @@unique([companyId, code])
+  @@index([legalName], map: "idx_partner_name")
+  @@map("partner")
+}
+
+model PartnerContact {
+  id        BigInt  @id @default(autoincrement())
+  partnerId BigInt  @map("partner_id")
+  name      String  @db.VarChar(150)
+  position  String? @db.VarChar(100)
+  email     String? @db.VarChar(150)
+  phone     String? @db.VarChar(50)
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@map("partner_contact")
 }

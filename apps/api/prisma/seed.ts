@@ -155,6 +155,18 @@ const PERMISSIONS: PermissionSpec[] = [
     module: 'inventory',
     description: 'Registrar movimientos de inventario (entradas, salidas, ajustes)',
   },
+
+  // --- Terceros / partners (HU-9.1) ---
+  {
+    code: 'partners.read',
+    module: 'partners',
+    description: 'Listar y ver clientes/proveedores',
+  },
+  {
+    code: 'partners.manage',
+    module: 'partners',
+    description: 'Crear/editar/eliminar clientes y proveedores y sus contactos',
+  },
 ];
 
 async function seedCurrencies(): Promise<void> {
