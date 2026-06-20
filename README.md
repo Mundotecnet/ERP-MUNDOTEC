@@ -469,7 +469,7 @@ Ver [`docs/backlog-fase2.md`](docs/backlog-fase2.md) para el plan completo de la
 ## Estado del Sprint 7 (Fase 2 — Compras)
 
 - [x] **PR-23 — HU-9.1**: Terceros (modelo `Partner` + `PartnerContact` con cascade; CRUD con filtro por tipo `CUSTOMER`/`SUPPLIER`/`BOTH` y búsqueda `?q=`; CRUD de contactos). Permisos `partners.read/manage`.
-- [ ] PR-24 — HU-9.2: Órdenes de compra (estados DRAFT → APPROVED, cálculo de totales con moneda + tipo de cambio).
+- [x] **PR-24 — HU-9.2**: Órdenes de compra (`PurchaseOrder` + `PurchaseOrderLine`, cascade líneas, totales server-side `subtotal/tax_amount/total/base_total`, multi-moneda con `exchange_rate`, transiciones `DRAFT → APPROVED → CANCELLED`, `POST /purchase-orders/:id/approve` y `/cancel`). Permisos `purchases.po.read/manage`.
 - [ ] PR-25 — HU-9.3: Recepciones (alimentan el kardex con `StockMovement` IN atómicos y avanzan `received_qty`).
 - [ ] PR-26 — HU-9.4: UI Compras.
 
