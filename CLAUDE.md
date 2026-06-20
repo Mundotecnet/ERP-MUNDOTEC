@@ -72,6 +72,18 @@ CLAUDE.md
 Empezar por el **Sprint 1**: estructura del proyecto, Docker + CI/CD, migraciones desde `erp_schema.sql`, y auditoría.
 No implementar módulos operativos (inventario, ventas, etc.) todavía.
 
+## 7.b Requisitos congelados para sprints futuros
+
+Antes de programar los sprints de **Precios**, **Ventas/CxC** y la integración
+con **Compras**, leer [`/docs/requisitos-precios-cxc.md`](docs/requisitos-precios-cxc.md).
+Ese documento fija las fórmulas (margen sobre precio de venta, no sobre costo),
+los niveles de precio por categoría de cliente (A–E) sobre `price_list_item`
+con `margin_pct`, el flujo de recálculo con confirmación al recibir compras y
+la bandera "fuera de margen", el manejo de CxC multimoneda con diferencia
+cambiaria realizada/no realizada, y el utilitario de precios con vista previa
+obligatoria. Cualquier cambio a esas reglas se discute y se actualiza ahí
+**antes** de tocar `erp_schema.sql`, Prisma o NestJS.
+
 ## 8. Comandos (completar al crear el proyecto)
 
 ```bash
