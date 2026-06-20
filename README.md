@@ -462,7 +462,9 @@ Ver [`docs/backlog-fase2.md`](docs/backlog-fase2.md) para el plan completo de la
 
 - [x] **PR-20 — HU-8.1 + HU-8.2**: Movimientos de inventario (modelo `StockMovement` + `POST /stock-movements` con transacción Prisma y costo promedio ponderado, `GET /stock-movements` con filtros). Permisos `inventory.movement.read/manage`.
 - [x] **PR-21 — HU-8.3**: Transferencias entre almacenes (`POST /stock-movements/transfer` — OUT+IN atómicos con `source_id` cruzado y `source_doc='TRANSFER'`; el `unit_cost` del par hereda el `avg_cost` del origen).
-- [ ] PR-22 — HU-8.4: UI con form de movimiento y vista de kardex por producto.
+- [x] **PR-22 — HU-8.4**: UI `/movements` con tabs **Nuevo movimiento** (IN/OUT/ADJUST con CPP) · **Transferencia** (validación origen ≠ destino client-side) · **Kardex** con filtros producto/almacén/fecha.
+
+**Sprint 6 completo** ✓ — Kardex con CPP, transferencias atómicas y UI integrada.
 
 ## Frontend `web-erp` (HU-6.2)
 
