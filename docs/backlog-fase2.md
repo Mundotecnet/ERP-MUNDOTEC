@@ -14,8 +14,8 @@ Continuación de la **Fase 1** (16 PRs cerrados + hotfix). En esta fase entran l
 | Sprint | Módulo                                                                        | Estado    |
 | ------ | ----------------------------------------------------------------------------- | --------- |
 | 5      | Productos / Items / Stock-snapshot (read-only)                                | ✓ cerrado |
-| **6**  | Inventario / Kardex (movimientos, ajustes, transferencias, valuación)         | en curso  |
-| 7      | Compras (proveedores, OC, recepciones)                                        | pendiente |
+| 6      | Inventario / Kardex (movimientos, ajustes, transferencias, valuación)         | ✓ cerrado |
+| **7**  | Compras (proveedores, OC, recepciones)                                        | pendiente |
 | 8      | Ventas core (clientes, cotizaciones, órdenes, facturas — sin pagos ni fiscal) | pendiente |
 | 9      | Caja / POS (sesiones, tickets, métodos de pago, cierre)                       | pendiente |
 | 10     | CRM / Tickets / Taller (contactos, OTs)                                       | pendiente |

@@ -6,6 +6,7 @@ import { BranchesPage } from '@/pages/branches';
 import { CurrenciesPage } from '@/pages/currencies';
 import { DashboardPage } from '@/pages/dashboard';
 import { LoginPage } from '@/pages/login';
+import { MovementsPage } from '@/pages/movements';
 import { ProductsPage } from '@/pages/products';
 import { RolesPage } from '@/pages/roles';
 import { SettingsPage } from '@/pages/settings';
@@ -32,6 +33,14 @@ export default function App(): JSX.Element {
             element={
               <ProtectedRoute permission="inventory.stock.read">
                 <StockPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="movements"
+            element={
+              <ProtectedRoute permission="inventory.movement.read">
+                <MovementsPage />
               </ProtectedRoute>
             }
           />
