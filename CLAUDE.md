@@ -89,6 +89,13 @@ documentos de requisitos congelados:
   con stock, precios, costo, margen, pestañas Ventas y Compras con sus KPIs,
   y la sección contextual de historial cuando hay cliente seleccionado.
   Es solo consultas y UI; no requiere cambios al canónico.
+- [`/docs/requisitos-inventario.md`](docs/requisitos-inventario.md) — fija
+  el módulo de mantenimiento de inventario: pantalla única con filtros y
+  grid editable para conteos físicos. Reusa `inventory_adjustment` /
+  `inventory_adjustment_line` del canónico; al confirmar genera
+  movimientos `ADJUST` en el kardex con `sourceDoc='ADJUSTMENT'` vía
+  `StockMovementsService.applyMovementInTx`. No requiere cambios al
+  canónico.
 
 Cualquier cambio a estas reglas se discute y se actualiza ahí **antes** de
 tocar `erp_schema.sql`, Prisma o NestJS.
