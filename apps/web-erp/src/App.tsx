@@ -7,7 +7,10 @@ import { CurrenciesPage } from '@/pages/currencies';
 import { DashboardPage } from '@/pages/dashboard';
 import { LoginPage } from '@/pages/login';
 import { MovementsPage } from '@/pages/movements';
+import { PartnersPage } from '@/pages/partners';
 import { ProductsPage } from '@/pages/products';
+import { PurchaseOrdersPage } from '@/pages/purchase-orders';
+import { ReceiptsPage } from '@/pages/receipts';
 import { RolesPage } from '@/pages/roles';
 import { SettingsPage } from '@/pages/settings';
 import { StockPage } from '@/pages/stock';
@@ -41,6 +44,30 @@ export default function App(): JSX.Element {
             element={
               <ProtectedRoute permission="inventory.movement.read">
                 <MovementsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="partners"
+            element={
+              <ProtectedRoute permission="partners.read">
+                <PartnersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="purchase-orders"
+            element={
+              <ProtectedRoute permission="purchases.po.read">
+                <PurchaseOrdersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="receipts"
+            element={
+              <ProtectedRoute permission="purchases.receipt.read">
+                <ReceiptsPage />
               </ProtectedRoute>
             }
           />

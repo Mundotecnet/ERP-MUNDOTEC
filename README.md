@@ -471,7 +471,9 @@ Ver [`docs/backlog-fase2.md`](docs/backlog-fase2.md) para el plan completo de la
 - [x] **PR-23 — HU-9.1**: Terceros (modelo `Partner` + `PartnerContact` con cascade; CRUD con filtro por tipo `CUSTOMER`/`SUPPLIER`/`BOTH` y búsqueda `?q=`; CRUD de contactos). Permisos `partners.read/manage`.
 - [x] **PR-24 — HU-9.2**: Órdenes de compra (`PurchaseOrder` + `PurchaseOrderLine`, cascade líneas, totales server-side `subtotal/tax_amount/total/base_total`, multi-moneda con `exchange_rate`, transiciones `DRAFT → APPROVED → CANCELLED`, `POST /purchase-orders/:id/approve` y `/cancel`). Permisos `purchases.po.read/manage`.
 - [x] **PR-25 — HU-9.3**: Recepciones (`GoodsReceipt` + `GoodsReceiptLine`, `POST /goods-receipts` atómico que genera `StockMovement` IN por línea con `sourceDoc='RECEIPT'`, avanza `received_qty` de las líneas de OC con FIFO por producto, y mueve la OC a `RECEIVED` cuando se completa). Permisos `purchases.receipt.read/manage`.
-- [ ] PR-26 — HU-9.4: UI Compras.
+- [x] **PR-26 — HU-9.4**: UI Compras — tres páginas: `/partners` (CRUD + tab Contactos), `/purchase-orders` (CRUD con líneas via `useFieldArray`, totales client-side, acciones Aprobar/Cancelar/Eliminar según estado, badge coloreado, vista de detalle inmutable), `/receipts` (dialog con tabs Contra OC / Recepción directa; el modo OC precarga líneas pendientes con cantidad máxima).
+
+**Sprint 7 completo** ✓ — Backend (partners + OC + recepciones con kardex) y UI Compras cerrados.
 
 ## Frontend `web-erp` (HU-6.2)
 
