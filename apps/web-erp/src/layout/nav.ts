@@ -3,10 +3,13 @@ import {
   Box,
   Building2,
   Coins,
+  Contact2,
   FileBadge,
   Home,
   Layers,
+  PackageCheck,
   Settings,
+  ShoppingCart,
   Users,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
@@ -33,6 +36,19 @@ export const NAV_ENTRIES: NavEntry[] = [
     to: '/movements',
     icon: ArrowLeftRight,
     permission: 'inventory.movement.read',
+  },
+  { label: 'Terceros', to: '/partners', icon: Contact2, permission: 'partners.read' },
+  {
+    label: 'Órdenes de compra',
+    to: '/purchase-orders',
+    icon: ShoppingCart,
+    permission: 'purchases.po.read',
+  },
+  {
+    label: 'Recepciones',
+    to: '/receipts',
+    icon: PackageCheck,
+    permission: 'purchases.receipt.read',
   },
   { label: 'Sucursales', to: '/branches', icon: Building2, permission: 'branch.read' },
   { label: 'Usuarios', to: '/users', icon: Users, permission: 'users.read' },
