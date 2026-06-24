@@ -22,6 +22,7 @@ export const AUDITED_MODELS = new Set<string>([
   'Partner',
   'PurchaseOrder',
   'GoodsReceipt',
+  'Quotation',
 ]);
 
 /**
@@ -42,6 +43,7 @@ export const TENANT_MODELS = new Set<string>([
   'Partner',
   'PurchaseOrder',
   'GoodsReceipt',
+  'Quotation',
 ]);
 
 /**

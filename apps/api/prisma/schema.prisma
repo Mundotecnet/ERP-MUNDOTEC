@@ -56,6 +56,7 @@ model Company {
   partners          Partner[]
   purchaseOrders    PurchaseOrder[]
   goodsReceipts     GoodsReceipt[]
+  quotations        Quotation[]
 
   @@map("company")
 }
@@ -73,6 +74,7 @@ model Branch {
   company        Company         @relation(fields: [companyId], references: [id])
   warehouses     Warehouse[]
   purchaseOrders PurchaseOrder[]
+  quotations     Quotation[]
 
   @@unique([companyId, code])
   @@map("branch")
@@ -123,6 +125,8 @@ model AppUser {
   stockMovements      StockMovement[]
   purchaseOrders      PurchaseOrder[]
   goodsReceipts       GoodsReceipt[]
+  quotationsCreated   Quotation[]          @relation("QuotationCreatedBy")
+  quotationsAsSeller  Quotation[]          @relation("QuotationSalesperson")
 
   @@unique([companyId, username])
   @@unique([companyId, email])
@@ -361,6 +365,7 @@ model Product {
   stockMovements    StockMovement[]
   purchaseOrderLines PurchaseOrderLine[]
   goodsReceiptLines GoodsReceiptLine[]
+  quotationLines    QuotationLine[]
 
   @@unique([companyId, sku])
   @@index([barcode])
@@ -468,6 +473,7 @@ model Partner {
   contacts          PartnerContact[]
   customerCategory  CustomerCategory? @relation(fields: [customerCategoryId], references: [id])
   purchaseOrders    PurchaseOrder[]
+  quotations        Quotation[]
 
   @@unique([companyId, code])
   @@index([legalName], map: "idx_partner_name")
@@ -575,4 +581,80 @@ model GoodsReceiptLine {
   product      Product      @relation(fields: [productId], references: [id])
 
   @@map("goods_receipt_line")
+}
+
+// HU-10.1 — Cotizaciones (ventas).
+// Estados: DRAFT (editable) → SENT → ACCEPTED → CONVERTED (lo setea PR-28 al
+// crear la SalesOrder asociada) ; SENT/ACCEPTED → REJECTED ; DRAFT/SENT →
+// EXPIRED. Cliente opcional (puede ser prospecto sin partner formal todavía).
+// Totales calculados server-side; descuento por línea suportado.
+// Columnas extra (cost_total, margin_*, global_adjust_*, sent_*, sales_stage)
+// vienen del canónico secc. 18.1; en PR-27 sólo se modelan con defaults — la
+// lógica de costo/margen llega con el sprint de Precios.
+model Quotation {
+  id                     BigInt    @id @default(autoincrement())
+  companyId              BigInt    @map("company_id")
+  branchId               BigInt?   @map("branch_id")
+  customerId             BigInt?   @map("customer_id")
+  opportunityId          BigInt?   @map("opportunity_id")
+  quoteNumber            String    @map("quote_number") @db.VarChar(30)
+  quoteDate              DateTime  @default(now()) @map("quote_date") @db.Date
+  validUntil             DateTime? @map("valid_until") @db.Date
+  status                 String    @default("DRAFT") @db.VarChar(15)
+  currencyCode           String    @default("USD") @map("currency_code") @db.Char(3)
+  exchangeRate           Decimal   @default(1) @map("exchange_rate") @db.Decimal(18, 6)
+  subtotal               Decimal   @default(0) @db.Decimal(18, 4)
+  taxAmount              Decimal   @default(0) @map("tax_amount") @db.Decimal(18, 4)
+  discountAmount         Decimal   @default(0) @map("discount_amount") @db.Decimal(18, 4)
+  total                  Decimal   @default(0) @db.Decimal(18, 4)
+  baseTotal              Decimal   @default(0) @map("base_total") @db.Decimal(18, 4)
+  convertedSalesOrderId  BigInt?   @map("converted_sales_order_id")
+  notes                  String?   @db.VarChar(300)
+  createdBy              BigInt?   @map("created_by")
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  // Extensión sección 18.1 — costos/márgenes/ajustes globales/envío por correo.
+  // Sin lógica de negocio en este PR; el sprint de Precios los rellena.
+  costTotal              Decimal   @default(0) @map("cost_total") @db.Decimal(18, 4)
+  marginAmount           Decimal   @default(0) @map("margin_amount") @db.Decimal(18, 4)
+  marginPct              Decimal   @default(0) @map("margin_pct") @db.Decimal(7, 4)
+  globalAdjustType       String?   @map("global_adjust_type") @db.VarChar(12)
+  globalAdjustValue      Decimal?  @map("global_adjust_value") @db.Decimal(18, 4)
+  sentAt                 DateTime? @map("sent_at") @db.Timestamptz
+  sentToEmail            String?   @map("sent_to_email") @db.VarChar(150)
+  salesStage             String?   @map("sales_stage") @db.VarChar(20)
+  // Extensión sección 20.1 — vendedor asignado a la cotización (para comisión).
+  salespersonId          BigInt?   @map("salesperson_id")
+
+  company     Company         @relation(fields: [companyId], references: [id])
+  branch      Branch?         @relation(fields: [branchId], references: [id])
+  customer    Partner?        @relation(fields: [customerId], references: [id])
+  user        AppUser?        @relation("QuotationCreatedBy", fields: [createdBy], references: [id])
+  salesperson AppUser?        @relation("QuotationSalesperson", fields: [salespersonId], references: [id])
+  lines       QuotationLine[]
+
+  @@unique([companyId, quoteNumber])
+  @@index([status], map: "idx_quotation_status")
+  @@map("quotation")
+}
+
+model QuotationLine {
+  id            BigInt   @id @default(autoincrement())
+  quotationId   BigInt   @map("quotation_id")
+  productId     BigInt?  @map("product_id")
+  description   String?  @db.VarChar(250)
+  quantity      Decimal  @db.Decimal(18, 4)
+  unitPrice     Decimal  @map("unit_price") @db.Decimal(18, 4)
+  discountRate  Decimal  @default(0) @map("discount_rate") @db.Decimal(7, 4)
+  taxRate       Decimal  @default(0) @map("tax_rate") @db.Decimal(7, 4)
+  lineTotal     Decimal  @map("line_total") @db.Decimal(18, 4)
+  // Extensión sección 18.1 — costo/margen por línea.
+  unitCost      Decimal  @default(0) @map("unit_cost") @db.Decimal(18, 4)
+  marginAmount  Decimal  @default(0) @map("margin_amount") @db.Decimal(18, 4)
+  marginPct     Decimal  @default(0) @map("margin_pct") @db.Decimal(7, 4)
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product   Product?  @relation(fields: [productId], references: [id])
+
+  @@map("quotation_line")
 }

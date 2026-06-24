@@ -191,6 +191,18 @@ const PERMISSIONS: PermissionSpec[] = [
     module: 'purchases',
     description: 'Registrar recepciones de mercancía (alimentan el kardex)',
   },
+
+  // --- Ventas / cotizaciones (HU-10.1) ---
+  {
+    code: 'sales.quote.read',
+    module: 'sales',
+    description: 'Ver cotizaciones de venta',
+  },
+  {
+    code: 'sales.quote.manage',
+    module: 'sales',
+    description: 'Crear/editar/eliminar cotizaciones y transitarlas (enviar, aceptar, rechazar)',
+  },
 ];
 
 async function seedCurrencies(): Promise<void> {
