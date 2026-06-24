@@ -22,6 +22,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ProductCategoriesModule } from './product-categories/product-categories.module';
 import { ProductsModule } from './products/products.module';
 import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
+import { QuotationsModule } from './quotations/quotations.module';
 import { RbacModule } from './rbac/rbac.module';
 import { StockModule } from './stock/stock.module';
 import { StockMovementsModule } from './stock-movements/stock-movements.module';
@@ -62,6 +63,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     PartnersModule,
     PurchaseOrdersModule,
     GoodsReceiptsModule,
+    QuotationsModule,
   ],
   controllers: [AppController],
   providers: [

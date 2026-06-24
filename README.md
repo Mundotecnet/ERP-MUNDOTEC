@@ -475,6 +475,13 @@ Ver [`docs/backlog-fase2.md`](docs/backlog-fase2.md) para el plan completo de la
 
 **Sprint 7 completo** ✓ — Backend (partners + OC + recepciones con kardex) y UI Compras cerrados.
 
+## Estado del Sprint 8 (Fase 2 — Ventas core)
+
+- [x] **PR-27 — HU-10.1**: Cotizaciones (`Quotation` + `QuotationLine` con cascade; CRUD con totales server-side, descuento por línea y multimoneda; transiciones DRAFT → SENT → ACCEPTED/REJECTED/EXPIRED; cliente opcional para prospectos; vendedor opcional). Permisos `sales.quote.read/manage`.
+- [ ] PR-28 — HU-10.2: Órdenes de venta + conversión desde cotización.
+- [ ] PR-29 — HU-10.3: Facturas (al emitir generan `StockMovement` OUT atómicos).
+- [ ] PR-30 — HU-10.4: UI Ventas.
+
 ## Frontend `web-erp` (HU-6.2)
 
 Shell de la aplicación interna construido con React 18 + Vite + Tailwind CSS + shadcn-style primitives + react-router-dom 6 + TanStack Query 5 + react-hook-form + zod + axios.
