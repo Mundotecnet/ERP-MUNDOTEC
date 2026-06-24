@@ -203,6 +203,18 @@ const PERMISSIONS: PermissionSpec[] = [
     module: 'sales',
     description: 'Crear/editar/eliminar cotizaciones y transitarlas (enviar, aceptar, rechazar)',
   },
+
+  // --- Ventas / órdenes (HU-10.2) ---
+  {
+    code: 'sales.order.read',
+    module: 'sales',
+    description: 'Ver órdenes de venta',
+  },
+  {
+    code: 'sales.order.manage',
+    module: 'sales',
+    description: 'Crear/editar/eliminar órdenes de venta y transitarlas (confirmar, cancelar)',
+  },
 ];
 
 async function seedCurrencies(): Promise<void> {

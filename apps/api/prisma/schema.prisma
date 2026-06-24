@@ -57,6 +57,7 @@ model Company {
   purchaseOrders    PurchaseOrder[]
   goodsReceipts     GoodsReceipt[]
   quotations        Quotation[]
+  salesOrders       SalesOrder[]
 
   @@map("company")
 }
@@ -75,6 +76,7 @@ model Branch {
   warehouses     Warehouse[]
   purchaseOrders PurchaseOrder[]
   quotations     Quotation[]
+  salesOrders    SalesOrder[]
 
   @@unique([companyId, code])
   @@map("branch")
@@ -127,6 +129,8 @@ model AppUser {
   goodsReceipts       GoodsReceipt[]
   quotationsCreated   Quotation[]          @relation("QuotationCreatedBy")
   quotationsAsSeller  Quotation[]          @relation("QuotationSalesperson")
+  salesOrdersCreated  SalesOrder[]         @relation("SalesOrderCreatedBy")
+  salesOrdersAsSeller SalesOrder[]         @relation("SalesOrderSalesperson")
 
   @@unique([companyId, username])
   @@unique([companyId, email])
@@ -366,6 +370,7 @@ model Product {
   purchaseOrderLines PurchaseOrderLine[]
   goodsReceiptLines GoodsReceiptLine[]
   quotationLines    QuotationLine[]
+  salesOrderLines   SalesOrderLine[]
 
   @@unique([companyId, sku])
   @@index([barcode])
@@ -474,6 +479,7 @@ model Partner {
   customerCategory  CustomerCategory? @relation(fields: [customerCategoryId], references: [id])
   purchaseOrders    PurchaseOrder[]
   quotations        Quotation[]
+  salesOrders       SalesOrder[]
 
   @@unique([companyId, code])
   @@index([legalName], map: "idx_partner_name")
@@ -632,6 +638,7 @@ model Quotation {
   user        AppUser?        @relation("QuotationCreatedBy", fields: [createdBy], references: [id])
   salesperson AppUser?        @relation("QuotationSalesperson", fields: [salespersonId], references: [id])
   lines       QuotationLine[]
+  salesOrders SalesOrder[]    @relation("SalesOrderFromQuotation")
 
   @@unique([companyId, quoteNumber])
   @@index([status], map: "idx_quotation_status")
@@ -657,4 +664,67 @@ model QuotationLine {
   product   Product?  @relation(fields: [productId], references: [id])
 
   @@map("quotation_line")
+}
+
+// HU-10.2 — Órdenes de venta.
+// Estados: DRAFT (editable) → CONFIRMED → INVOICED (lo setea PR-29 al emitir
+// la factura asociada) ; DRAFT/CONFIRMED → CANCELLED. Cliente REQUERIDO (a
+// diferencia de cotización). Totales calculados server-side con descuento por
+// línea. Puede originarse de una cotización (quotationId) — la conversión la
+// hace `POST /quotations/:id/convert` en QuotationsService.
+model SalesOrder {
+  id              BigInt   @id @default(autoincrement())
+  companyId       BigInt   @map("company_id")
+  branchId        BigInt?  @map("branch_id")
+  customerId      BigInt   @map("customer_id")
+  opportunityId   BigInt?  @map("opportunity_id")
+  quotationId     BigInt?  @map("quotation_id")
+  orderNumber     String   @map("order_number") @db.VarChar(30)
+  orderDate       DateTime @default(now()) @map("order_date") @db.Date
+  status          String   @default("DRAFT") @db.VarChar(20)
+  currencyCode    String   @default("USD") @map("currency_code") @db.Char(3)
+  exchangeRate    Decimal  @default(1) @map("exchange_rate") @db.Decimal(18, 6)
+  subtotal        Decimal  @default(0) @db.Decimal(18, 4)
+  taxAmount       Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 4)
+  discountAmount  Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 4)
+  total           Decimal  @default(0) @db.Decimal(18, 4)
+  baseTotal       Decimal  @default(0) @map("base_total") @db.Decimal(18, 4)
+  notes           String?  @db.VarChar(300)
+  createdBy       BigInt?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  // Extensión sección 20.1 — vendedor asignado (para comisión).
+  salespersonId   BigInt?  @map("salesperson_id")
+  // Extensión sección de canales (l. 1071-1075): origen del pedido y enlace
+  // con la web. `channel` default 'POS' por el canónico; este sprint sólo lo
+  // modela — la integración con el storefront es del sprint 13.
+  channel         String   @default("POS") @db.VarChar(10)
+  externalRef     String?  @map("external_ref") @db.VarChar(60)
+  webStatus       String?  @map("web_status") @db.VarChar(15)
+
+  company     Company          @relation(fields: [companyId], references: [id])
+  branch      Branch?          @relation(fields: [branchId], references: [id])
+  customer    Partner          @relation(fields: [customerId], references: [id])
+  quotation   Quotation?       @relation("SalesOrderFromQuotation", fields: [quotationId], references: [id])
+  user        AppUser?         @relation("SalesOrderCreatedBy", fields: [createdBy], references: [id])
+  salesperson AppUser?         @relation("SalesOrderSalesperson", fields: [salespersonId], references: [id])
+  lines       SalesOrderLine[]
+
+  @@unique([companyId, orderNumber])
+  @@map("sales_order")
+}
+
+model SalesOrderLine {
+  id            BigInt  @id @default(autoincrement())
+  salesOrderId  BigInt  @map("sales_order_id")
+  productId     BigInt  @map("product_id")
+  quantity      Decimal @db.Decimal(18, 4)
+  unitPrice     Decimal @map("unit_price") @db.Decimal(18, 4)
+  discountRate  Decimal @default(0) @map("discount_rate") @db.Decimal(7, 4)
+  taxRate       Decimal @default(0) @map("tax_rate") @db.Decimal(7, 4)
+  lineTotal     Decimal @map("line_total") @db.Decimal(18, 4)
+
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@map("sales_order_line")
 }

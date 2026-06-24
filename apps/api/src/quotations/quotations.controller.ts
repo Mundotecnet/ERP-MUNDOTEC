@@ -23,7 +23,32 @@ import {
   parseUpdateQuotationBody,
   UpdateQuotationBody,
 } from './dto/quotations.dto';
-import { QuotationsService, QuotationView } from './quotations.service';
+import { ConvertQuotationResult, QuotationsService, QuotationView } from './quotations.service';
+
+interface ConvertBody {
+  orderNumber?: unknown;
+  branchId?: unknown;
+}
+
+function parseConvertBody(body: ConvertBody): { orderNumber: string; branchId?: bigint | null } {
+  if (typeof body.orderNumber !== 'string' || body.orderNumber.trim().length === 0) {
+    throw new BadRequestException('Campo "orderNumber" requerido para crear la orden de venta.');
+  }
+  const orderNumber = body.orderNumber.trim();
+  if (orderNumber.length > 30) {
+    throw new BadRequestException('Campo "orderNumber" excede 30 caracteres.');
+  }
+  if (body.branchId === undefined) return { orderNumber };
+  if (body.branchId === null) return { orderNumber, branchId: null };
+  if (typeof body.branchId !== 'string' && typeof body.branchId !== 'number') {
+    throw new BadRequestException('Campo "branchId" debe ser string, number o null.');
+  }
+  try {
+    return { orderNumber, branchId: BigInt(body.branchId) };
+  } catch {
+    throw new BadRequestException('Campo "branchId" no es un número válido.');
+  }
+}
 
 function parseBigIntParam(value: string, name: string): bigint {
   try {
@@ -125,5 +150,22 @@ export class QuotationsController {
     @Param('id') id: string,
   ): Promise<QuotationView> {
     return this.svc.expire(user.companyId, parseBigIntParam(id, 'id'));
+  }
+
+  /**
+   * Convierte una cotización ACCEPTED en orden de venta DRAFT. Requiere
+   * permiso de gestión de OV además del de cotizaciones (la conversión crea
+   * un documento de venta nuevo).
+   */
+  @Post(':id/convert')
+  @RequirePermission('sales.order.manage')
+  @HttpCode(201)
+  async convert(
+    @CurrentUser() user: AuthUserContext,
+    @Param('id') id: string,
+    @Body() body: ConvertBody,
+  ): Promise<ConvertQuotationResult> {
+    const parsed = parseConvertBody(body);
+    return this.svc.convert(user.companyId, user.userId, parseBigIntParam(id, 'id'), parsed);
   }
 }
