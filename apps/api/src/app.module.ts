@@ -24,6 +24,7 @@ import { ProductsModule } from './products/products.module';
 import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
 import { QuotationsModule } from './quotations/quotations.module';
 import { RbacModule } from './rbac/rbac.module';
+import { SalesOrdersModule } from './sales-orders/sales-orders.module';
 import { StockModule } from './stock/stock.module';
 import { StockMovementsModule } from './stock-movements/stock-movements.module';
 import { RequestContextInterceptor } from './request-context/request-context.interceptor';
@@ -63,6 +64,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     PartnersModule,
     PurchaseOrdersModule,
     GoodsReceiptsModule,
+    SalesOrdersModule,
     QuotationsModule,
   ],
   controllers: [AppController],

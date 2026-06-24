@@ -478,7 +478,7 @@ Ver [`docs/backlog-fase2.md`](docs/backlog-fase2.md) para el plan completo de la
 ## Estado del Sprint 8 (Fase 2 — Ventas core)
 
 - [x] **PR-27 — HU-10.1**: Cotizaciones (`Quotation` + `QuotationLine` con cascade; CRUD con totales server-side, descuento por línea y multimoneda; transiciones DRAFT → SENT → ACCEPTED/REJECTED/EXPIRED; cliente opcional para prospectos; vendedor opcional). Permisos `sales.quote.read/manage`.
-- [ ] PR-28 — HU-10.2: Órdenes de venta + conversión desde cotización.
+- [x] **PR-28 — HU-10.2**: Órdenes de venta (`SalesOrder` + `SalesOrderLine` con cascade; CRUD con totales server-side y descuento por línea; transiciones DRAFT → CONFIRMED → CANCELLED; endpoint `POST /quotations/:id/convert` que crea una SO DRAFT desde una cotización ACCEPTED en una sola transacción y marca la quote como CONVERTED). Permisos `sales.order.read/manage`.
 - [ ] PR-29 — HU-10.3: Facturas (al emitir generan `StockMovement` OUT atómicos).
 - [ ] PR-30 — HU-10.4: UI Ventas.
 
