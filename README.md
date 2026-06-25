@@ -480,7 +480,9 @@ Ver [`docs/backlog-fase2.md`](docs/backlog-fase2.md) para el plan completo de la
 - [x] **PR-27 — HU-10.1**: Cotizaciones (`Quotation` + `QuotationLine` con cascade; CRUD con totales server-side, descuento por línea y multimoneda; transiciones DRAFT → SENT → ACCEPTED/REJECTED/EXPIRED; cliente opcional para prospectos; vendedor opcional). Permisos `sales.quote.read/manage`.
 - [x] **PR-28 — HU-10.2**: Órdenes de venta (`SalesOrder` + `SalesOrderLine` con cascade; CRUD con totales server-side y descuento por línea; transiciones DRAFT → CONFIRMED → CANCELLED; endpoint `POST /quotations/:id/convert` que crea una SO DRAFT desde una cotización ACCEPTED en una sola transacción y marca la quote como CONVERTED). Permisos `sales.order.read/manage`.
 - [x] **PR-29 — HU-10.3**: Facturas (`Invoice` + `InvoiceLine` con cascade y campos fiscales CR del canónico sin lógica todavía; `POST /invoices` atómico que valida cliente/almacén/OV/productos, genera `StockMovement` OUT por cada línea inventariada con `sourceDoc='INVOICE'`, transiciona la OV asociada a `INVOICED` y rechaza con 409 si quedaría saldo negativo en cualquier almacén; `POST /invoices/:id/cancel` cambia status pero **no revierte el kardex** — para devoluciones físicas se usará `sales_return` en un sprint posterior). Permisos `sales.invoice.read/manage`.
-- [ ] PR-30 — HU-10.4: UI Ventas.
+- [x] **PR-30 — HU-10.4**: UI Ventas — tres páginas: `/quotations` (CRUD con líneas mixtas + transiciones DRAFT/SENT/ACCEPTED/REJECTED/EXPIRED + dialog "Convertir" que llama `/quotations/:id/convert`), `/sales-orders` (CRUD + transiciones DRAFT/CONFIRMED/CANCELLED + dialog "Facturar" que llama `POST /invoices` con `salesOrderId`), `/invoices` (emisión directa con líneas mixtas + cancel sin revertir kardex).
+
+**Sprint 8 completo** ✓ — Backend (cotizaciones + OV + facturas con kardex OUT) y UI Ventas cerrados.
 
 ## Frontend `web-erp` (HU-6.2)
 
