@@ -58,6 +58,7 @@ model Company {
   goodsReceipts     GoodsReceipt[]
   quotations        Quotation[]
   salesOrders       SalesOrder[]
+  invoices          Invoice[]
 
   @@map("company")
 }
@@ -77,6 +78,7 @@ model Branch {
   purchaseOrders PurchaseOrder[]
   quotations     Quotation[]
   salesOrders    SalesOrder[]
+  invoices       Invoice[]
 
   @@unique([companyId, code])
   @@map("branch")
@@ -131,6 +133,8 @@ model AppUser {
   quotationsAsSeller  Quotation[]          @relation("QuotationSalesperson")
   salesOrdersCreated  SalesOrder[]         @relation("SalesOrderCreatedBy")
   salesOrdersAsSeller SalesOrder[]         @relation("SalesOrderSalesperson")
+  invoicesCreated     Invoice[]            @relation("InvoiceCreatedBy")
+  invoicesAsSeller    Invoice[]            @relation("InvoiceSalesperson")
 
   @@unique([companyId, username])
   @@unique([companyId, email])
@@ -371,6 +375,7 @@ model Product {
   goodsReceiptLines GoodsReceiptLine[]
   quotationLines    QuotationLine[]
   salesOrderLines   SalesOrderLine[]
+  invoiceLines      InvoiceLine[]
 
   @@unique([companyId, sku])
   @@index([barcode])
@@ -480,6 +485,7 @@ model Partner {
   purchaseOrders    PurchaseOrder[]
   quotations        Quotation[]
   salesOrders       SalesOrder[]
+  invoices          Invoice[]
 
   @@unique([companyId, code])
   @@index([legalName], map: "idx_partner_name")
@@ -708,6 +714,7 @@ model SalesOrder {
   user        AppUser?         @relation("SalesOrderCreatedBy", fields: [createdBy], references: [id])
   salesperson AppUser?         @relation("SalesOrderSalesperson", fields: [salespersonId], references: [id])
   lines       SalesOrderLine[]
+  invoices    Invoice[]
 
   @@unique([companyId, orderNumber])
   @@map("sales_order")
@@ -727,4 +734,88 @@ model SalesOrderLine {
   product    Product    @relation(fields: [productId], references: [id])
 
   @@map("sales_order_line")
+}
+
+// HU-10.3 — Factura de venta.
+// Estados: ISSUED (al crear) → CANCELLED. PARTIAL/PAID los maneja el sprint
+// de Pagos. La factura es **inmutable** tras la emisión (sin PATCH, sin
+// DELETE) — sólo se puede cancelar (status, sin revertir kardex; las
+// devoluciones físicas van por sales_return en un sprint posterior).
+// La emisión ejecuta atómicamente: header + líneas + StockMovement OUT por
+// cada línea inventariada + transición SO→INVOICED si está asociada.
+//
+// Campos fiscales CR (document_type, ce_*, hacienda_*) se modelan con sus
+// defaults canónicos pero su lógica vive en el microservicio fiscal (sprint
+// 12). En este PR no se calculan ni se firman.
+model Invoice {
+  id              BigInt   @id @default(autoincrement())
+  companyId       BigInt   @map("company_id")
+  branchId        BigInt?  @map("branch_id")
+  customerId      BigInt   @map("customer_id")
+  salesOrderId    BigInt?  @map("sales_order_id")
+  serviceOrderId  BigInt?  @map("service_order_id")
+  invoiceNumber   String   @map("invoice_number") @db.VarChar(40)
+  invoiceDate     DateTime @default(now()) @map("invoice_date") @db.Date
+  dueDate         DateTime? @map("due_date") @db.Date
+  status          String   @default("ISSUED") @db.VarChar(20)
+  currencyCode    String   @default("USD") @map("currency_code") @db.Char(3)
+  exchangeRate    Decimal  @default(1) @map("exchange_rate") @db.Decimal(18, 6)
+  subtotal        Decimal  @default(0) @db.Decimal(18, 4)
+  taxAmount       Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 4)
+  total           Decimal  @default(0) @db.Decimal(18, 4)
+  baseTotal       Decimal  @default(0) @map("base_total") @db.Decimal(18, 4)
+  paidAmount      Decimal  @default(0) @map("paid_amount") @db.Decimal(18, 4)
+  balance         Decimal  @default(0) @db.Decimal(18, 4)
+  createdBy       BigInt?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  // Extensión sección 20.1 — vendedor (para comisiones).
+  salespersonId   BigInt?  @map("salesperson_id")
+  // Extensión fiscal CR (sección 11 del canónico). Sin lógica en este PR;
+  // valores por defecto del canónico para que la columna no quede vacía.
+  documentType    String   @default("FE") @map("document_type") @db.VarChar(3)
+  ceClave         String?  @map("ce_clave") @db.Char(50)
+  ceConsecutivo   String?  @map("ce_consecutivo") @db.Char(20)
+  ceSecurityCode  String?  @map("ce_security_code") @db.Char(8)
+  ceSituacion     Int      @default(1) @map("ce_situacion") @db.SmallInt
+  emitterActivity String?  @map("emitter_activity") @db.VarChar(6)
+  receiverActivity String? @map("receiver_activity") @db.VarChar(6)
+  saleCondition   String   @default("01") @map("sale_condition") @db.VarChar(2)
+  paymentMethod   String   @default("01") @map("payment_method") @db.VarChar(2)
+  haciendaStatus  String   @default("PENDING") @map("hacienda_status") @db.VarChar(15)
+  signedXmlUrl    String?  @map("signed_xml_url") @db.VarChar(400)
+  responseXmlUrl  String?  @map("response_xml_url") @db.VarChar(400)
+  acceptedAt      DateTime? @map("accepted_at") @db.Timestamptz
+
+  company     Company       @relation(fields: [companyId], references: [id])
+  branch      Branch?       @relation(fields: [branchId], references: [id])
+  customer    Partner       @relation(fields: [customerId], references: [id])
+  salesOrder  SalesOrder?   @relation(fields: [salesOrderId], references: [id])
+  user        AppUser?      @relation("InvoiceCreatedBy", fields: [createdBy], references: [id])
+  salesperson AppUser?      @relation("InvoiceSalesperson", fields: [salespersonId], references: [id])
+  lines       InvoiceLine[]
+
+  @@unique([companyId, invoiceNumber])
+  @@unique([ceClave], map: "uq_invoice_clave")
+  @@index([haciendaStatus], map: "idx_invoice_hacienda_status")
+  @@map("invoice")
+}
+
+model InvoiceLine {
+  id             BigInt  @id @default(autoincrement())
+  invoiceId      BigInt  @map("invoice_id")
+  productId      BigInt? @map("product_id")
+  description    String? @db.VarChar(250)
+  quantity       Decimal @db.Decimal(18, 4)
+  unitPrice      Decimal @map("unit_price") @db.Decimal(18, 4)
+  taxRate        Decimal @default(0) @map("tax_rate") @db.Decimal(7, 4)
+  lineTotal      Decimal @map("line_total") @db.Decimal(18, 4)
+  // Extensión fiscal CR (sección 11).
+  cabysCode      String? @map("cabys_code") @db.VarChar(13)
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(18, 4)
+  exemptAmount   Decimal @default(0) @map("exempt_amount") @db.Decimal(18, 4)
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@map("invoice_line")
 }

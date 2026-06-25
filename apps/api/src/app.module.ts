@@ -15,6 +15,7 @@ import { DepartmentsModule } from './departments/departments.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { GoodsReceiptsModule } from './goods-receipts/goods-receipts.module';
 import { HealthModule } from './health/health.module';
+import { InvoicesModule } from './invoices/invoices.module';
 import { MailerModule } from './mailer/mailer.module';
 import { PartnersModule } from './partners/partners.module';
 import { PermissionsModule } from './permissions/permissions.module';
@@ -66,6 +67,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     GoodsReceiptsModule,
     SalesOrdersModule,
     QuotationsModule,
+    InvoicesModule,
   ],
   controllers: [AppController],
   providers: [

@@ -215,6 +215,18 @@ const PERMISSIONS: PermissionSpec[] = [
     module: 'sales',
     description: 'Crear/editar/eliminar órdenes de venta y transitarlas (confirmar, cancelar)',
   },
+
+  // --- Ventas / facturas (HU-10.3) ---
+  {
+    code: 'sales.invoice.read',
+    module: 'sales',
+    description: 'Ver facturas de venta',
+  },
+  {
+    code: 'sales.invoice.manage',
+    module: 'sales',
+    description: 'Emitir facturas de venta (alimentan el kardex con OUT) y cancelarlas',
+  },
 ];
 
 async function seedCurrencies(): Promise<void> {
