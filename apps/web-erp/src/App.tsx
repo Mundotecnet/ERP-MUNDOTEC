@@ -5,13 +5,16 @@ import { Shell } from '@/layout/shell';
 import { BranchesPage } from '@/pages/branches';
 import { CurrenciesPage } from '@/pages/currencies';
 import { DashboardPage } from '@/pages/dashboard';
+import { InvoicesPage } from '@/pages/invoices';
 import { LoginPage } from '@/pages/login';
 import { MovementsPage } from '@/pages/movements';
 import { PartnersPage } from '@/pages/partners';
 import { ProductsPage } from '@/pages/products';
 import { PurchaseOrdersPage } from '@/pages/purchase-orders';
+import { QuotationsPage } from '@/pages/quotations';
 import { ReceiptsPage } from '@/pages/receipts';
 import { RolesPage } from '@/pages/roles';
+import { SalesOrdersPage } from '@/pages/sales-orders';
 import { SettingsPage } from '@/pages/settings';
 import { StockPage } from '@/pages/stock';
 import { UsersPage } from '@/pages/users';
@@ -68,6 +71,30 @@ export default function App(): JSX.Element {
             element={
               <ProtectedRoute permission="purchases.receipt.read">
                 <ReceiptsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="quotations"
+            element={
+              <ProtectedRoute permission="sales.quote.read">
+                <QuotationsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="sales-orders"
+            element={
+              <ProtectedRoute permission="sales.order.read">
+                <SalesOrdersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="invoices"
+            element={
+              <ProtectedRoute permission="sales.invoice.read">
+                <InvoicesPage />
               </ProtectedRoute>
             }
           />
