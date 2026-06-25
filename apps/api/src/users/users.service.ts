@@ -42,14 +42,17 @@ export class UsersService {
 
   async list(companyId: bigint, query: ParsedListUsers): Promise<PaginatedUsers> {
     const skip = (query.page - 1) * query.pageSize;
+    const where: Prisma.AppUserWhereInput = { companyId, deletedAt: null };
+    if (query.isSalesperson !== undefined) where.isSalesperson = query.isSalesperson;
+    if (query.isActive !== undefined) where.isActive = query.isActive;
     const [rows, total] = await Promise.all([
       this.prisma.raw.appUser.findMany({
-        where: { companyId, deletedAt: null },
+        where,
         orderBy: { username: 'asc' },
         skip,
         take: query.pageSize,
       }),
-      this.prisma.raw.appUser.count({ where: { companyId, deletedAt: null } }),
+      this.prisma.raw.appUser.count({ where }),
     ]);
     return {
       data: rows.map((r) => this.toView(r)),

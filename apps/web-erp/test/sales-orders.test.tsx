@@ -73,7 +73,9 @@ beforeEach(() => {
     if (url === '/branches') return { data: [] };
     if (url === '/products') return { data: [PRODUCT] };
     if (url === '/warehouses') return { data: [WAREHOUSE] };
-    if (url === '/users') return { data: [] };
+    if (url.startsWith('/users')) {
+      return { data: { data: [], total: 0, page: 1, pageSize: 200 } };
+    }
     if (url === '/companies/current') return { data: { currencyCode: 'CRC' } };
     return { data: [] };
   });
@@ -153,5 +155,45 @@ describe('SalesOrdersPage', () => {
         },
       ],
     });
+  });
+
+  it('OV con salespersonId huérfano preserva la opción en el selector de vendedor', async () => {
+    const SO_WITH_OLD_SP = {
+      ...SO_CONFIRMED_DETAIL,
+      status: 'DRAFT' as const,
+      salespersonId: '888',
+      salespersonName: 'Ex Vendedor SO',
+    };
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === '/sales-orders/1') return { data: SO_WITH_OLD_SP };
+      if (url.startsWith('/sales-orders')) return { data: [SO_WITH_OLD_SP] };
+      if (url === '/partners?type=CUSTOMER') return { data: [CUSTOMER] };
+      if (url === '/branches') return { data: [] };
+      if (url === '/products') return { data: [PRODUCT] };
+      if (url === '/warehouses') return { data: [WAREHOUSE] };
+      if (url.startsWith('/users')) {
+        return {
+          data: {
+            data: [{ id: '7', fullName: 'Vendedor Vigente', isSalesperson: true }],
+            total: 1,
+            page: 1,
+            pageSize: 200,
+          },
+        };
+      }
+      if (url === '/companies/current') return { data: { currencyCode: 'CRC' } };
+      return { data: [] };
+    });
+    setup();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /^editar$/i }));
+
+    await waitFor(() => {
+      const opt = document.querySelector('#so-sp option[value="888"]');
+      expect(opt?.textContent).toBe('Ex Vendedor SO');
+    });
+    expect(document.querySelector('#so-sp option[value="7"]')?.textContent).toBe(
+      'Vendedor Vigente',
+    );
   });
 });

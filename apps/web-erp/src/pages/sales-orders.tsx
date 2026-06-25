@@ -155,8 +155,11 @@ export function SalesOrdersPage(): JSX.Element {
     queryFn: async () => (await api.get('/warehouses')).data,
   });
   const usersQ = useQuery<AppUser[]>({
-    queryKey: ['users'],
-    queryFn: async () => (await api.get('/users')).data,
+    queryKey: ['users', 'salespeople'],
+    queryFn: async () => {
+      const res = await api.get('/users?isSalesperson=true&pageSize=200');
+      return Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+    },
   });
   const companyQ = useQuery<CompanyOverview>({
     queryKey: ['company'],
@@ -353,19 +356,25 @@ export function SalesOrdersPage(): JSX.Element {
         <SoEditorDialog
           mode={creating ? 'create' : 'edit'}
           so={editing}
-          customers={(customersQ.data ?? []).filter(
+          customers={(Array.isArray(customersQ.data) ? customersQ.data : []).filter(
             (p) => p.partnerType === 'CUSTOMER' || p.partnerType === 'BOTH',
           )}
-          branches={branchesQ.data ?? []}
-          products={(productsQ.data ?? []).filter((p) => p.isInventoried)}
-          users={usersQ.data ?? []}
+          branches={Array.isArray(branchesQ.data) ? branchesQ.data : []}
+          products={(Array.isArray(productsQ.data) ? productsQ.data : []).filter(
+            (p) => p.isInventoried,
+          )}
+          users={Array.isArray(usersQ.data) ? usersQ.data : []}
           companyCurrency={companyQ.data?.currencyCode ?? 'USD'}
           onClose={close}
         />
       )}
       {viewing && <SoViewDialog so={viewing} onClose={close} />}
       {invoicing && (
-        <InvoiceFromSoDialog so={invoicing} warehouses={warehousesQ.data ?? []} onClose={close} />
+        <InvoiceFromSoDialog
+          so={invoicing}
+          warehouses={Array.isArray(warehousesQ.data) ? warehousesQ.data : []}
+          onClose={close}
+        />
       )}
     </>
   );
@@ -407,6 +416,16 @@ function SoEditorDialog(props: EditorProps): JSX.Element {
   const qc = useQueryClient();
   const [serverError, setServerError] = React.useState<string | null>(null);
   const initial = props.so;
+
+  const usersList = React.useMemo(() => {
+    const base = Array.isArray(props.users) ? props.users : [];
+    const saved = initial?.salespersonId;
+    if (!saved || base.some((u) => u.id === saved)) return base;
+    return [...base, { id: saved, fullName: initial?.salespersonName ?? '(usuario sin acceso)' }];
+  }, [props.users, initial?.salespersonId, initial?.salespersonName]);
+  const customersList = Array.isArray(props.customers) ? props.customers : [];
+  const branchesList = Array.isArray(props.branches) ? props.branches : [];
+  const productsList = Array.isArray(props.products) ? props.products : [];
 
   const {
     register,
@@ -527,7 +546,7 @@ function SoEditorDialog(props: EditorProps): JSX.Element {
               <Field label="Cliente" htmlFor="so-cust" error={errors.customerId?.message}>
                 <SelectInput id="so-cust" {...register('customerId')}>
                   <option value="">— Seleccionar —</option>
-                  {props.customers.map((c) => (
+                  {customersList.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.legalName}
                     </option>
@@ -537,7 +556,7 @@ function SoEditorDialog(props: EditorProps): JSX.Element {
               <Field label="Sucursal" htmlFor="so-br" error={errors.branchId?.message}>
                 <SelectInput id="so-br" {...register('branchId')}>
                   <option value="">— Sin sucursal —</option>
-                  {props.branches.map((b) => (
+                  {branchesList.map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.code} — {b.name}
                     </option>
@@ -547,7 +566,7 @@ function SoEditorDialog(props: EditorProps): JSX.Element {
               <Field label="Vendedor" htmlFor="so-sp" error={errors.salespersonId?.message}>
                 <SelectInput id="so-sp" {...register('salespersonId')}>
                   <option value="">— Sin vendedor —</option>
-                  {props.users.map((u) => (
+                  {usersList.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.fullName}
                     </option>
@@ -633,7 +652,7 @@ function SoEditorDialog(props: EditorProps): JSX.Element {
                               {...register(`lines.${idx}.productId`)}
                             >
                               <option value="">— Seleccionar —</option>
-                              {props.products.map((p) => (
+                              {productsList.map((p) => (
                                 <option key={p.id} value={p.id}>
                                   {p.sku} — {p.name}
                                 </option>

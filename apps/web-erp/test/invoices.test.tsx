@@ -60,7 +60,9 @@ beforeEach(() => {
     if (url === '/branches') return { data: [] };
     if (url === '/products') return { data: [PRODUCT] };
     if (url === '/warehouses') return { data: [WAREHOUSE] };
-    if (url === '/users') return { data: [] };
+    if (url.startsWith('/users')) {
+      return { data: { data: [], total: 0, page: 1, pageSize: 200 } };
+    }
     if (url === '/companies/current') return { data: { currencyCode: 'CRC' } };
     return { data: [] };
   });
@@ -124,5 +126,41 @@ describe('InvoicesPage', () => {
       ],
     });
     expect((body as { salesOrderId?: unknown }).salesOrderId).toBeUndefined();
+  });
+
+  it('selector de vendedor consume /users con isSalesperson=true (payload paginado)', async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.startsWith('/invoices')) return { data: [INVOICE] };
+      if (url === '/partners?type=CUSTOMER') return { data: [CUSTOMER] };
+      if (url === '/branches') return { data: [] };
+      if (url === '/products') return { data: [PRODUCT] };
+      if (url === '/warehouses') return { data: [WAREHOUSE] };
+      if (url.startsWith('/users')) {
+        return {
+          data: {
+            data: [{ id: '7', fullName: 'Vendedor Activo', isSalesperson: true }],
+            total: 1,
+            page: 1,
+            pageSize: 200,
+          },
+        };
+      }
+      if (url === '/companies/current') return { data: { currencyCode: 'CRC' } };
+      return { data: [] };
+    });
+    setup();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /nueva factura/i }));
+
+    const usersCalls = vi
+      .mocked(api.get)
+      .mock.calls.filter((c) => String(c[0]).startsWith('/users'));
+    expect(usersCalls.length).toBeGreaterThanOrEqual(1);
+    expect(String(usersCalls[0][0])).toContain('isSalesperson=true');
+
+    await waitFor(() => {
+      const opt = document.querySelector('#i-sp option[value="7"]');
+      expect(opt?.textContent).toBe('Vendedor Activo');
+    });
   });
 });

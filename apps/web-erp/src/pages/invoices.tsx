@@ -152,8 +152,11 @@ export function InvoicesPage(): JSX.Element {
     queryFn: async () => (await api.get('/warehouses')).data,
   });
   const usersQ = useQuery<AppUser[]>({
-    queryKey: ['users'],
-    queryFn: async () => (await api.get('/users')).data,
+    queryKey: ['users', 'salespeople'],
+    queryFn: async () => {
+      const res = await api.get('/users?isSalesperson=true&pageSize=200');
+      return Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+    },
   });
   const companyQ = useQuery<CompanyOverview>({
     queryKey: ['company'],
@@ -299,13 +302,13 @@ export function InvoicesPage(): JSX.Element {
 
       {creating && (
         <InvoiceEditorDialog
-          customers={(customersQ.data ?? []).filter(
+          customers={(Array.isArray(customersQ.data) ? customersQ.data : []).filter(
             (p) => p.partnerType === 'CUSTOMER' || p.partnerType === 'BOTH',
           )}
-          branches={branchesQ.data ?? []}
-          products={productsQ.data ?? []}
-          warehouses={warehousesQ.data ?? []}
-          users={usersQ.data ?? []}
+          branches={Array.isArray(branchesQ.data) ? branchesQ.data : []}
+          products={Array.isArray(productsQ.data) ? productsQ.data : []}
+          warehouses={Array.isArray(warehousesQ.data) ? warehousesQ.data : []}
+          users={Array.isArray(usersQ.data) ? usersQ.data : []}
           companyCurrency={companyQ.data?.currencyCode ?? 'USD'}
           onClose={close}
         />
@@ -349,6 +352,13 @@ interface EditorProps {
 function InvoiceEditorDialog(props: EditorProps): JSX.Element {
   const qc = useQueryClient();
   const [serverError, setServerError] = React.useState<string | null>(null);
+
+  // Las listas vienen guarded del page, pero blindamos por si el caller cambia.
+  const customersList = Array.isArray(props.customers) ? props.customers : [];
+  const branchesList = Array.isArray(props.branches) ? props.branches : [];
+  const productsList = Array.isArray(props.products) ? props.products : [];
+  const warehousesList = Array.isArray(props.warehouses) ? props.warehouses : [];
+  const usersList = Array.isArray(props.users) ? props.users : [];
 
   const {
     register,
@@ -450,7 +460,7 @@ function InvoiceEditorDialog(props: EditorProps): JSX.Element {
               <Field label="Cliente" htmlFor="i-cust" error={errors.customerId?.message}>
                 <SelectInput id="i-cust" {...register('customerId')}>
                   <option value="">— Seleccionar —</option>
-                  {props.customers.map((c) => (
+                  {customersList.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.legalName}
                     </option>
@@ -460,7 +470,7 @@ function InvoiceEditorDialog(props: EditorProps): JSX.Element {
               <Field label="Almacén" htmlFor="i-wh" error={errors.warehouseId?.message}>
                 <SelectInput id="i-wh" {...register('warehouseId')}>
                   <option value="">— Seleccionar —</option>
-                  {props.warehouses.map((w) => (
+                  {warehousesList.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.code} — {w.name}
                     </option>
@@ -470,7 +480,7 @@ function InvoiceEditorDialog(props: EditorProps): JSX.Element {
               <Field label="Sucursal" htmlFor="i-br" error={errors.branchId?.message}>
                 <SelectInput id="i-br" {...register('branchId')}>
                   <option value="">— Sin sucursal —</option>
-                  {props.branches.map((b) => (
+                  {branchesList.map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.code} — {b.name}
                     </option>
@@ -480,7 +490,7 @@ function InvoiceEditorDialog(props: EditorProps): JSX.Element {
               <Field label="Vendedor" htmlFor="i-sp" error={errors.salespersonId?.message}>
                 <SelectInput id="i-sp" {...register('salespersonId')}>
                   <option value="">— Sin vendedor —</option>
-                  {props.users.map((u) => (
+                  {usersList.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.fullName}
                     </option>
@@ -566,7 +576,7 @@ function InvoiceEditorDialog(props: EditorProps): JSX.Element {
                               {...register(`lines.${idx}.productId`)}
                             >
                               <option value="">— (descripción libre) —</option>
-                              {props.products.map((p) => (
+                              {productsList.map((p) => (
                                 <option key={p.id} value={p.id}>
                                   {p.sku} — {p.name}
                                 </option>

@@ -164,6 +164,44 @@ describe('Users CRUD (HU-4.1, e2e)', () => {
       const usernames = (res.body.data as { username: string }[]).map((u) => u.username);
       expect(usernames).toEqual(['admin-b']);
     });
+
+    it('?isSalesperson=true filtra solo vendedores (HU-10.4 — selector vendedor)', async () => {
+      await tc.raw.appUser.create({
+        data: {
+          companyId: fx.companyAId,
+          username: 'vend-only',
+          email: 'vend-only@demo.local',
+          passwordHash: await bcrypt.hash(STRONG_PASSWORD, 4),
+          fullName: 'Vendedor Activo',
+          isSalesperson: true,
+        },
+      });
+      await tc.raw.appUser.create({
+        data: {
+          companyId: fx.companyAId,
+          username: 'no-vend',
+          email: 'no-vend@demo.local',
+          passwordHash: await bcrypt.hash(STRONG_PASSWORD, 4),
+          fullName: 'No Vendedor',
+          isSalesperson: false,
+        },
+      });
+      const res = await request(tc.app.getHttpServer())
+        .get('/users?isSalesperson=true&pageSize=50')
+        .set('Authorization', `Bearer ${fx.adminAccessTokenA}`);
+      expect(res.status).toBe(200);
+      const rows = res.body.data as { username: string; isSalesperson: boolean }[];
+      expect(rows.every((r) => r.isSalesperson === true)).toBe(true);
+      expect(rows.map((r) => r.username)).toEqual(expect.arrayContaining(['vend-only']));
+      expect(rows.map((r) => r.username)).not.toContain('no-vend');
+    });
+
+    it('?isSalesperson=invalid devuelve 400', async () => {
+      const res = await request(tc.app.getHttpServer())
+        .get('/users?isSalesperson=yes')
+        .set('Authorization', `Bearer ${fx.adminAccessTokenA}`);
+      expect(res.status).toBe(400);
+    });
   });
 
   describe('GET /users/:id', () => {
