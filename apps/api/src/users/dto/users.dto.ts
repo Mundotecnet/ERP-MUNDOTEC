@@ -43,11 +43,15 @@ export interface ParsedUpdateUser {
 export interface ListUsersQuery {
   page?: unknown;
   pageSize?: unknown;
+  isSalesperson?: unknown;
+  isActive?: unknown;
 }
 
 export interface ParsedListUsers {
   page: number;
   pageSize: number;
+  isSalesperson?: boolean;
+  isActive?: boolean;
 }
 
 function requireString(value: unknown, name: string, max: number): string {
@@ -158,10 +162,22 @@ export function parseListUsersQuery(q: ListUsersQuery): ParsedListUsers {
     }
     return n;
   }
-  return {
+  function flagFromQuery(raw: unknown, name: string): boolean | undefined {
+    if (raw === undefined) return undefined;
+    if (typeof raw === 'boolean') return raw;
+    if (raw === 'true' || raw === '1') return true;
+    if (raw === 'false' || raw === '0') return false;
+    throw new BadRequestException(`Parámetro "${name}" debe ser true/false.`);
+  }
+  const out: ParsedListUsers = {
     page: intInRange(q.page, 'page', 1, 100_000),
     pageSize: intInRange(q.pageSize, 'pageSize', 20, 200),
   };
+  const isSalesperson = flagFromQuery(q.isSalesperson, 'isSalesperson');
+  if (isSalesperson !== undefined) out.isSalesperson = isSalesperson;
+  const isActive = flagFromQuery(q.isActive, 'isActive');
+  if (isActive !== undefined) out.isActive = isActive;
+  return out;
 }
 
 export interface ReplaceUserRolesBody {

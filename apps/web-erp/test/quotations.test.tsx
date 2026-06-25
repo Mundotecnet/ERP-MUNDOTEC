@@ -54,11 +54,17 @@ const QUOTE = {
 
 beforeEach(() => {
   vi.mocked(api.get).mockImplementation(async (url: string) => {
-    if (url.startsWith('/quotations')) return { data: [QUOTE] };
+    if (url.startsWith('/quotations')) {
+      // /quotations/:id devuelve el detalle, no la lista.
+      return url.match(/\/quotations\/[^?]+$/) ? { data: QUOTE } : { data: [QUOTE] };
+    }
     if (url === '/partners?type=CUSTOMER') return { data: [CUSTOMER] };
     if (url === '/branches') return { data: [] };
     if (url === '/products') return { data: [] };
-    if (url === '/users') return { data: [] };
+    if (url.startsWith('/users')) {
+      // /users responde paginado.
+      return { data: { data: [], total: 0, page: 1, pageSize: 200 } };
+    }
     if (url === '/companies/current') return { data: { currencyCode: 'CRC' } };
     return { data: [] };
   });
@@ -131,5 +137,81 @@ describe('QuotationsPage', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
     expect(vi.mocked(api.post).mock.calls[0][0]).toBe('/quotations/1/convert');
     expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ orderNumber: 'SO-FROM-Q' });
+  });
+
+  it('pide /users con isSalesperson=true y renderiza vendedores del payload paginado', async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.startsWith('/quotations')) {
+        return url.match(/\/quotations\/[^?]+$/) ? { data: QUOTE } : { data: [QUOTE] };
+      }
+      if (url === '/partners?type=CUSTOMER') return { data: [CUSTOMER] };
+      if (url === '/branches') return { data: [] };
+      if (url === '/products') return { data: [] };
+      if (url.startsWith('/users')) {
+        return {
+          data: {
+            data: [{ id: '7', fullName: 'Vendedor Activo', isSalesperson: true }],
+            total: 1,
+            page: 1,
+            pageSize: 200,
+          },
+        };
+      }
+      if (url === '/companies/current') return { data: { currencyCode: 'CRC' } };
+      return { data: [] };
+    });
+    setup();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /nueva cotización/i }));
+
+    const usersCalls = vi
+      .mocked(api.get)
+      .mock.calls.filter((c) => String(c[0]).startsWith('/users'));
+    expect(usersCalls.length).toBeGreaterThanOrEqual(1);
+    expect(String(usersCalls[0][0])).toContain('isSalesperson=true');
+
+    await waitFor(() => {
+      const opt = document.querySelector('#q-sp option[value="7"]');
+      expect(opt?.textContent).toBe('Vendedor Activo');
+    });
+  });
+
+  it('al editar una cotización con vendedor ya removido de la lista, conserva la opción', async () => {
+    const QUOTE_WITH_OLD_SP = {
+      ...QUOTE,
+      status: 'DRAFT' as const,
+      salespersonId: '999',
+      salespersonName: 'Ex Vendedor',
+    };
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.match(/\/quotations\/[^?]+$/)) return { data: QUOTE_WITH_OLD_SP };
+      if (url.startsWith('/quotations')) return { data: [QUOTE_WITH_OLD_SP] };
+      if (url === '/partners?type=CUSTOMER') return { data: [CUSTOMER] };
+      if (url === '/branches') return { data: [] };
+      if (url === '/products') return { data: [] };
+      if (url.startsWith('/users')) {
+        // El usuario 999 ya no aparece en la lista filtrada (ya no es vendedor).
+        return {
+          data: {
+            data: [{ id: '7', fullName: 'Otro Vendedor', isSalesperson: true }],
+            total: 1,
+            page: 1,
+            pageSize: 200,
+          },
+        };
+      }
+      if (url === '/companies/current') return { data: { currencyCode: 'CRC' } };
+      return { data: [] };
+    });
+    setup();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /^editar$/i }));
+
+    await waitFor(() => {
+      const opt = document.querySelector('#q-sp option[value="999"]');
+      expect(opt?.textContent).toBe('Ex Vendedor');
+    });
+    // y el vendedor "vigente" también está
+    expect(document.querySelector('#q-sp option[value="7"]')?.textContent).toBe('Otro Vendedor');
   });
 });
