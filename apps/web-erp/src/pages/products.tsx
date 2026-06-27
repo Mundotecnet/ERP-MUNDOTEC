@@ -22,6 +22,9 @@ interface Product {
   taxId: string | null;
   costPrice: string;
   salePrice: string;
+  marginPct: string;
+  minMarginPct: string;
+  outOfMargin: boolean;
   priceCurrency: string;
   isInventoried: boolean;
   trackingType: string;
@@ -52,6 +55,9 @@ interface Department {
 
 const TRACKING_TYPES = ['NONE', 'SERIAL', 'LOT'] as const;
 
+// Schema de la pestaña "General" — los campos de precio (costo, margen,
+// precio, margen mínimo, moneda) viven exclusivamente en la pestaña "Precios"
+// y se manejan vía PATCH /products/:id/pricing.
 const productSchema = z.object({
   sku: z.string().min(1, 'Requerido').max(60),
   name: z.string().min(1, 'Requerido').max(200),
@@ -61,18 +67,6 @@ const productSchema = z.object({
   categoryId: z.string().optional(),
   taxId: z.string().optional(),
   departmentId: z.string().optional(),
-  costPrice: z
-    .string()
-    .regex(/^\d+(\.\d{1,4})?$/, 'Decimal con hasta 4 decimales')
-    .optional(),
-  salePrice: z
-    .string()
-    .regex(/^\d+(\.\d{1,4})?$/, 'Decimal con hasta 4 decimales')
-    .optional(),
-  priceCurrency: z
-    .string()
-    .regex(/^[A-Z]{3}$/, 'Código ISO de 3 letras')
-    .optional(),
   trackingType: z.enum(TRACKING_TYPES).optional(),
   warrantyMonths: z.coerce.number().int().min(0).optional(),
   isInventoried: z.boolean().optional(),
@@ -90,9 +84,6 @@ function emptyForm(): ProductFormValues {
     categoryId: '',
     taxId: '',
     departmentId: '',
-    costPrice: '0',
-    salePrice: '0',
-    priceCurrency: 'USD',
     trackingType: 'NONE',
     warrantyMonths: 0,
     isInventoried: true,
@@ -110,9 +101,6 @@ function productToForm(p: Product): ProductFormValues {
     categoryId: p.categoryId ?? '',
     taxId: p.taxId ?? '',
     departmentId: p.departmentId ?? '',
-    costPrice: p.costPrice,
-    salePrice: p.salePrice,
-    priceCurrency: p.priceCurrency,
     trackingType: p.trackingType as (typeof TRACKING_TYPES)[number],
     warrantyMonths: p.warrantyMonths,
     isInventoried: p.isInventoried,
@@ -129,9 +117,6 @@ interface ApiPayload {
   categoryId: string | null;
   taxId: string | null;
   departmentId: string | null;
-  costPrice: string;
-  salePrice: string;
-  priceCurrency: string;
   trackingType: string;
   warrantyMonths: number;
   isInventoried: boolean;
@@ -148,9 +133,6 @@ function formToPayload(v: ProductFormValues): ApiPayload {
     categoryId: v.categoryId?.trim() ? v.categoryId.trim() : null,
     taxId: v.taxId?.trim() ? v.taxId.trim() : null,
     departmentId: v.departmentId?.trim() ? v.departmentId.trim() : null,
-    costPrice: v.costPrice ?? '0',
-    salePrice: v.salePrice ?? '0',
-    priceCurrency: v.priceCurrency ?? 'USD',
     trackingType: v.trackingType ?? 'NONE',
     warrantyMonths: v.warrantyMonths ?? 0,
     isInventoried: v.isInventoried ?? true,
@@ -352,142 +334,186 @@ function ProductDialog(props: ProductDialogProps): JSX.Element {
     },
   });
 
+  const [activeTab, setActiveTab] = React.useState<'general' | 'pricing'>('general');
+  const isEdit = props.mode === 'edit' && props.productId !== null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <Card className="w-full max-w-2xl">
+      <Card className="w-full max-w-3xl">
         <CardHeader>
           <CardTitle>{props.mode === 'create' ? 'Nuevo producto' : 'Editar producto'}</CardTitle>
+          <div className="mt-3 flex gap-1 border-b">
+            <TabButton
+              active={activeTab === 'general'}
+              onClick={() => setActiveTab('general')}
+              id="tab-general"
+            >
+              General
+            </TabButton>
+            <TabButton
+              active={activeTab === 'pricing'}
+              onClick={() => isEdit && setActiveTab('pricing')}
+              id="tab-pricing"
+              disabled={!isEdit}
+              title={!isEdit ? 'Disponible después de crear el producto' : undefined}
+            >
+              Precios
+            </TabButton>
+          </div>
         </CardHeader>
         <CardContent>
-          <form
-            className="grid grid-cols-1 gap-4 md:grid-cols-2"
-            onSubmit={handleSubmit((v) => mutation.mutate(v))}
-            noValidate
-          >
-            <Field label="SKU" htmlFor="sku" error={errors.sku?.message}>
-              <Input id="sku" {...register('sku')} />
-            </Field>
-            <Field label="Nombre" htmlFor="name" error={errors.name?.message}>
-              <Input id="name" {...register('name')} />
-            </Field>
-            <Field label="Código de barras" htmlFor="barcode" error={errors.barcode?.message}>
-              <Input id="barcode" {...register('barcode')} />
-            </Field>
-            <Field label="Unidad de medida" htmlFor="uomId" error={errors.uomId?.message}>
-              <SelectInput id="uomId" {...register('uomId')}>
-                <option value="">— Seleccionar —</option>
-                {props.uoms.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.code} — {u.name}
-                  </option>
-                ))}
-              </SelectInput>
-            </Field>
-            <Field label="Categoría" htmlFor="categoryId" error={errors.categoryId?.message}>
-              <SelectInput id="categoryId" {...register('categoryId')}>
-                <option value="">— Sin categoría —</option>
-                {props.categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </SelectInput>
-            </Field>
-            <Field label="Impuesto" htmlFor="taxId" error={errors.taxId?.message}>
-              <SelectInput id="taxId" {...register('taxId')}>
-                <option value="">— Sin impuesto —</option>
-                {props.taxes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </SelectInput>
-            </Field>
-            <Field label="Departamento" htmlFor="departmentId" error={errors.departmentId?.message}>
-              <SelectInput id="departmentId" {...register('departmentId')}>
-                <option value="">— Sin departamento —</option>
-                {props.departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </SelectInput>
-            </Field>
-            <Field label="Tracking" htmlFor="trackingType" error={errors.trackingType?.message}>
-              <SelectInput id="trackingType" {...register('trackingType')}>
-                {TRACKING_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </SelectInput>
-            </Field>
-            <Field label="Costo" htmlFor="costPrice" error={errors.costPrice?.message}>
-              <Input id="costPrice" inputMode="decimal" {...register('costPrice')} />
-            </Field>
-            <Field label="Precio venta" htmlFor="salePrice" error={errors.salePrice?.message}>
-              <Input id="salePrice" inputMode="decimal" {...register('salePrice')} />
-            </Field>
-            <Field label="Moneda" htmlFor="priceCurrency" error={errors.priceCurrency?.message}>
-              <Input
-                id="priceCurrency"
-                maxLength={3}
-                {...register('priceCurrency', {
-                  setValueAs: (v) => (typeof v === 'string' ? v.toUpperCase() : v),
-                })}
-              />
-            </Field>
-            <Field
-              label="Garantía (meses)"
-              htmlFor="warrantyMonths"
-              error={errors.warrantyMonths?.message}
+          {activeTab === 'general' && (
+            <form
+              className="grid grid-cols-1 gap-4 md:grid-cols-2"
+              onSubmit={handleSubmit((v) => mutation.mutate(v))}
+              noValidate
             >
-              <Input
-                id="warrantyMonths"
-                type="number"
-                min={0}
-                {...register('warrantyMonths', { valueAsNumber: true })}
-              />
-            </Field>
+              <Field label="SKU" htmlFor="sku" error={errors.sku?.message}>
+                <Input id="sku" {...register('sku')} />
+              </Field>
+              <Field label="Nombre" htmlFor="name" error={errors.name?.message}>
+                <Input id="name" {...register('name')} />
+              </Field>
+              <Field label="Código de barras" htmlFor="barcode" error={errors.barcode?.message}>
+                <Input id="barcode" {...register('barcode')} />
+              </Field>
+              <Field label="Unidad de medida" htmlFor="uomId" error={errors.uomId?.message}>
+                <SelectInput id="uomId" {...register('uomId')}>
+                  <option value="">— Seleccionar —</option>
+                  {props.uoms.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.code} — {u.name}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+              <Field label="Categoría" htmlFor="categoryId" error={errors.categoryId?.message}>
+                <SelectInput id="categoryId" {...register('categoryId')}>
+                  <option value="">— Sin categoría —</option>
+                  {props.categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+              <Field label="Impuesto" htmlFor="taxId" error={errors.taxId?.message}>
+                <SelectInput id="taxId" {...register('taxId')}>
+                  <option value="">— Sin impuesto —</option>
+                  {props.taxes.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+              <Field
+                label="Departamento"
+                htmlFor="departmentId"
+                error={errors.departmentId?.message}
+              >
+                <SelectInput id="departmentId" {...register('departmentId')}>
+                  <option value="">— Sin departamento —</option>
+                  {props.departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+              <Field label="Tracking" htmlFor="trackingType" error={errors.trackingType?.message}>
+                <SelectInput id="trackingType" {...register('trackingType')}>
+                  {TRACKING_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+              <Field
+                label="Garantía (meses)"
+                htmlFor="warrantyMonths"
+                error={errors.warrantyMonths?.message}
+              >
+                <Input
+                  id="warrantyMonths"
+                  type="number"
+                  min={0}
+                  {...register('warrantyMonths', { valueAsNumber: true })}
+                />
+              </Field>
 
-            <Field
-              label="Descripción"
-              htmlFor="description"
-              error={errors.description?.message}
-              fullWidth
-            >
-              <Input id="description" {...register('description')} />
-            </Field>
+              <Field
+                label="Descripción"
+                htmlFor="description"
+                error={errors.description?.message}
+                fullWidth
+              >
+                <Input id="description" {...register('description')} />
+              </Field>
 
-            <div className="md:col-span-2 flex flex-wrap gap-x-6 gap-y-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" {...register('isInventoried')} />
-                Se inventaría
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" {...register('isActive')} />
-                Activo
-              </label>
-            </div>
-
-            {serverError && (
-              <div className="md:col-span-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {serverError}
+              <div className="md:col-span-2 flex flex-wrap gap-x-6 gap-y-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" {...register('isInventoried')} />
+                  Se inventaría
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" {...register('isActive')} />
+                  Activo
+                </label>
               </div>
-            )}
 
-            <div className="md:col-span-2 flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={props.onClose}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={isSubmitting || mutation.isPending}>
-                {mutation.isPending ? 'Guardando…' : 'Guardar'}
-              </Button>
-            </div>
-          </form>
+              {serverError && (
+                <div className="md:col-span-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {serverError}
+                </div>
+              )}
+
+              <div className="md:col-span-2 flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={props.onClose}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={isSubmitting || mutation.isPending}>
+                  {mutation.isPending ? 'Guardando…' : 'Guardar'}
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {activeTab === 'pricing' && isEdit && (
+            <PricingTab productId={props.productId!} onClose={props.onClose} />
+          )}
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function TabButton(props: {
+  children: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+  id: string;
+  disabled?: boolean;
+  title?: string;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      id={props.id}
+      onClick={props.onClick}
+      disabled={props.disabled}
+      title={props.title}
+      className={[
+        'px-3 py-1.5 text-sm border-b-2 -mb-px',
+        props.active
+          ? 'border-primary text-primary font-medium'
+          : 'border-transparent text-muted-foreground',
+        props.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:text-foreground',
+      ].join(' ')}
+    >
+      {props.children}
+    </button>
   );
 }
 
@@ -518,3 +544,276 @@ const SelectInput = React.forwardRef<
   />
 ));
 SelectInput.displayName = 'SelectInput';
+
+// ============================================================================
+// PR-32 — Pestaña Precios (costo, margen, precio, margen mínimo + historial)
+// ============================================================================
+// El margen es **sobre el precio de venta**: margin = (price - cost) / price.
+// El recálculo es bidireccional en vivo: si el usuario edita precio el margen
+// se actualiza; si edita margen el precio se actualiza. Cambiar costo
+// recalcula el precio respetando el margen vigente (si > 0).
+//
+// TODO PR-33: el costo se derivará del kardex (promedio ponderado al recibir
+// compras) y dejará de ser editable directamente desde acá. En PR-32 sigue
+// siendo el valor inicial / manual del catálogo.
+
+interface PricingView {
+  productId: string;
+  sku: string;
+  name: string;
+  priceCurrency: string;
+  costPrice: string;
+  salePrice: string;
+  marginPct: string;
+  minMarginPct: string;
+  outOfMargin: boolean;
+}
+
+interface PricingHistoryEntry {
+  id: string;
+  changeType: string;
+  source: string | null;
+  reason: string | null;
+  costValue: string | null;
+  marginPct: string | null;
+  oldValue: string | null;
+  newValue: string;
+  changedByName: string | null;
+  changedAt: string;
+}
+
+function parseNum(s: string): number {
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function fmt4(n: number): string {
+  if (!Number.isFinite(n)) return '';
+  return n
+    .toFixed(4)
+    .replace(/\.?0+$/, '')
+    .replace(/^$/, '0');
+}
+
+// Cliente: las mismas fórmulas del backend (pricing.formula.ts). Replicamos
+// acá la versión número-flotante solo para la UI en vivo; el server tiene la
+// versión decimal precisa y valida cualquier valor que mandemos.
+function clientPriceFromMargin(cost: number, margin: number): number {
+  if (!(cost > 0) || margin >= 1 || margin < 0) return 0;
+  return cost / (1 - margin);
+}
+function clientMarginFromPrice(cost: number, price: number): number {
+  if (!(price > 0) || price < cost) return 0;
+  const raw = (price - cost) / price;
+  return raw >= 0.9999 ? 0.9999 : raw;
+}
+
+function PricingTab(props: { productId: string; onClose(): void }): JSX.Element {
+  const qc = useQueryClient();
+  const [serverError, setServerError] = React.useState<string | null>(null);
+  const [costStr, setCostStr] = React.useState('0');
+  const [salePriceStr, setSalePriceStr] = React.useState('0');
+  const [marginPctStr, setMarginPctStr] = React.useState('0');
+  const [minMarginPctStr, setMinMarginPctStr] = React.useState('0');
+  const [reason, setReason] = React.useState('');
+
+  const pricingQ = useQuery<PricingView>({
+    queryKey: ['pricing', props.productId],
+    queryFn: async () => (await api.get(`/products/${props.productId}/pricing`)).data,
+  });
+  const historyQ = useQuery<PricingHistoryEntry[]>({
+    queryKey: ['pricing-history', props.productId],
+    queryFn: async () => (await api.get(`/products/${props.productId}/pricing/history`)).data,
+  });
+
+  // Hidrata el form al cargar el producto.
+  React.useEffect(() => {
+    if (pricingQ.data) {
+      setCostStr(pricingQ.data.costPrice);
+      setSalePriceStr(pricingQ.data.salePrice);
+      setMarginPctStr(pricingQ.data.marginPct);
+      setMinMarginPctStr(pricingQ.data.minMarginPct);
+    }
+  }, [pricingQ.data]);
+
+  const cost = parseNum(costStr);
+  const margin = parseNum(marginPctStr);
+  const minMargin = parseNum(minMarginPctStr);
+  const outOfMargin = minMargin > 0 && margin < minMargin;
+
+  function onChangeCost(v: string) {
+    setCostStr(v);
+    const c = parseNum(v);
+    // Si hay margen vigente y costo > 0: recalcula precio. Si no, deja precio.
+    if (c > 0 && margin > 0 && margin < 1) {
+      setSalePriceStr(fmt4(clientPriceFromMargin(c, margin)));
+    }
+  }
+  function onChangePrice(v: string) {
+    setSalePriceStr(v);
+    const p = parseNum(v);
+    setMarginPctStr(fmt4(clientMarginFromPrice(cost, p)));
+  }
+  function onChangeMargin(v: string) {
+    setMarginPctStr(v);
+    const m = parseNum(v);
+    setSalePriceStr(fmt4(clientPriceFromMargin(cost, m)));
+  }
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, string> = {
+        costPrice: costStr,
+        salePrice: salePriceStr,
+        marginPct: marginPctStr,
+        minMarginPct: minMarginPctStr,
+      };
+      if (reason.trim()) payload.reason = reason.trim();
+      return (await api.patch(`/products/${props.productId}/pricing`, payload)).data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pricing', props.productId] });
+      qc.invalidateQueries({ queryKey: ['pricing-history', props.productId] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      setReason('');
+      setServerError(null);
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof AxiosError
+          ? ((err.response?.data as { message?: string } | undefined)?.message ??
+            'No se pudo guardar.')
+          : 'No se pudo guardar.';
+      setServerError(msg);
+    },
+  });
+
+  if (pricingQ.isLoading) {
+    return <p className="text-sm text-muted-foreground">Cargando precios…</p>;
+  }
+  if (pricingQ.error || !pricingQ.data) {
+    return <p className="text-sm text-destructive">No se pudieron cargar los precios.</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-xs text-muted-foreground">
+        El margen se calcula sobre el precio de venta. Cambia cualquier campo y los demás se
+        recalculan en vivo. El costo se guarda manualmente por ahora; en una próxima entrega lo
+        derivaremos del kardex de compras (promedio ponderado).
+      </p>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Field label={`Costo (${pricingQ.data.priceCurrency})`} htmlFor="pricing-cost">
+          <Input
+            id="pricing-cost"
+            inputMode="decimal"
+            value={costStr}
+            onChange={(e) => onChangeCost(e.target.value)}
+          />
+        </Field>
+        <Field label="Margen %" htmlFor="pricing-margin">
+          <Input
+            id="pricing-margin"
+            inputMode="decimal"
+            value={marginPctStr}
+            onChange={(e) => onChangeMargin(e.target.value)}
+            aria-describedby="pricing-margin-hint"
+          />
+          <span id="pricing-margin-hint" className="text-xs text-muted-foreground">
+            Fracción (0.30 = 30 %)
+          </span>
+        </Field>
+        <Field label={`Precio venta (${pricingQ.data.priceCurrency})`} htmlFor="pricing-price">
+          <Input
+            id="pricing-price"
+            inputMode="decimal"
+            value={salePriceStr}
+            onChange={(e) => onChangePrice(e.target.value)}
+          />
+        </Field>
+        <Field label="Margen mínimo %" htmlFor="pricing-min-margin">
+          <Input
+            id="pricing-min-margin"
+            inputMode="decimal"
+            value={minMarginPctStr}
+            onChange={(e) => setMinMarginPctStr(e.target.value)}
+          />
+        </Field>
+        <Field label="Motivo del cambio (opcional)" htmlFor="pricing-reason" fullWidth>
+          <Input
+            id="pricing-reason"
+            maxLength={250}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Ej.: ajuste por nueva lista de proveedor"
+          />
+        </Field>
+      </div>
+
+      {outOfMargin && (
+        <div
+          role="alert"
+          data-testid="out-of-margin-badge"
+          className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+        >
+          ⚠ Fuera de margen: el margen efectivo ({(margin * 100).toFixed(2)} %) está por debajo del
+          piso configurado ({(minMargin * 100).toFixed(2)} %).
+        </div>
+      )}
+
+      {serverError && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {serverError}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={props.onClose}>
+          Cerrar
+        </Button>
+        <Button type="button" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+          {mutation.isPending ? 'Guardando…' : 'Guardar precios'}
+        </Button>
+      </div>
+
+      <div className="mt-2">
+        <h4 className="mb-2 text-sm font-semibold">Historial de cambios</h4>
+        {historyQ.isLoading && <p className="text-xs text-muted-foreground">Cargando…</p>}
+        {historyQ.data && historyQ.data.length === 0 && (
+          <p className="text-xs text-muted-foreground">Sin movimientos registrados.</p>
+        )}
+        {historyQ.data && historyQ.data.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b text-left uppercase text-muted-foreground">
+                  <th className="py-1 pr-3 font-medium">Fecha</th>
+                  <th className="py-1 pr-3 font-medium">Usuario</th>
+                  <th className="py-1 pr-3 font-medium">Costo</th>
+                  <th className="py-1 pr-3 font-medium">Margen</th>
+                  <th className="py-1 pr-3 font-medium">Precio</th>
+                  <th className="py-1 pr-3 font-medium">Motivo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyQ.data.map((h) => (
+                  <tr key={h.id} className="border-b last:border-b-0">
+                    <td className="py-1 pr-3 whitespace-nowrap">
+                      {new Date(h.changedAt).toLocaleString()}
+                    </td>
+                    <td className="py-1 pr-3">{h.changedByName ?? '—'}</td>
+                    <td className="py-1 pr-3">{h.costValue ?? '—'}</td>
+                    <td className="py-1 pr-3">{h.marginPct ?? '—'}</td>
+                    <td className="py-1 pr-3">{h.newValue}</td>
+                    <td className="py-1 pr-3">{h.reason ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

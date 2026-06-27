@@ -1922,5 +1922,35 @@ LEFT JOIN app_user u ON u.id = a.created_by
 WHERE a.status = 'DRAFT';
 
 -- ============================================================================
+-- 21. PRECIOS — núcleo (PR-32, HU-11.1)
+-- ============================================================================
+-- Modelo costo/margen/precio a nivel producto. El margen es **sobre el precio
+-- de venta** (no sobre costo): margin_pct = (price - cost) / price.
+-- En este PR el costo es editable manualmente; en PR-33 se derivará del
+-- kardex (costo promedio ponderado) y la edición manual se volverá un ajuste
+-- auditado. Las columnas margin_pct/min_margin_pct viven aquí en producto;
+-- la extensión per-lista (price_list_item.margin_pct/out_of_margin) queda
+-- congelada en docs/requisitos-precios-cxc.md §1–2 para un PR posterior.
+ALTER TABLE product
+    ADD COLUMN margin_pct      NUMERIC(7,4) NOT NULL DEFAULT 0,        -- intención del usuario, 0.30 = 30 %
+    ADD COLUMN min_margin_pct  NUMERIC(7,4) NOT NULL DEFAULT 0,        -- piso aceptable para flag out_of_margin
+    ADD COLUMN out_of_margin   BOOLEAN      NOT NULL DEFAULT FALSE;    -- snapshot = (margin_pct < min_margin_pct)
+
+ALTER TABLE product
+    ADD CONSTRAINT chk_product_margin_pct
+        CHECK (margin_pct >= 0 AND margin_pct < 1),
+    ADD CONSTRAINT chk_product_min_margin_pct
+        CHECK (min_margin_pct >= 0 AND min_margin_pct < 1);
+
+-- Extensión de product_price_history para capturar el trío costo/margen/precio
+-- en una sola fila + un motivo libre del usuario. Los campos legacy
+-- (old_value/new_value, change_type) se mantienen para compatibilidad con la
+-- semántica histórica (COST/SALE/etc.) que vendrá en sprints futuros.
+ALTER TABLE product_price_history
+    ADD COLUMN cost_value  NUMERIC(18,4),
+    ADD COLUMN margin_pct  NUMERIC(7,4),
+    ADD COLUMN reason      TEXT;
+
+-- ============================================================================
 -- FIN DEL ESQUEMA
 -- ============================================================================
