@@ -59,6 +59,7 @@ model Company {
   quotations        Quotation[]
   salesOrders       SalesOrder[]
   invoices          Invoice[]
+  priceHistory      ProductPriceHistory[]
 
   @@map("company")
 }
@@ -135,6 +136,7 @@ model AppUser {
   salesOrdersAsSeller SalesOrder[]         @relation("SalesOrderSalesperson")
   invoicesCreated     Invoice[]            @relation("InvoiceCreatedBy")
   invoicesAsSeller    Invoice[]            @relation("InvoiceSalesperson")
+  priceHistoryChanges ProductPriceHistory[]
 
   @@unique([companyId, username])
   @@unique([companyId, email])
@@ -340,6 +342,11 @@ model Product {
   taxId             BigInt?   @map("tax_id")
   costPrice         Decimal   @default(0) @map("cost_price") @db.Decimal(18, 4)
   salePrice         Decimal   @default(0) @map("sale_price") @db.Decimal(18, 4)
+  // HU-11.1 — margen sobre el precio de venta (no sobre costo). CHECK 0 ≤ x < 1
+  // se aplica vía SQL crudo en la migración (Prisma no modela CHECK).
+  marginPct         Decimal   @default(0) @map("margin_pct") @db.Decimal(7, 4)
+  minMarginPct      Decimal   @default(0) @map("min_margin_pct") @db.Decimal(7, 4)
+  outOfMargin       Boolean   @default(false) @map("out_of_margin")
   priceCurrency     String    @default("USD") @map("price_currency") @db.Char(3)
   isInventoried     Boolean   @default(true) @map("is_inventoried")
   trackingType      String    @default("NONE") @map("tracking_type") @db.VarChar(10)
@@ -376,11 +383,39 @@ model Product {
   quotationLines    QuotationLine[]
   salesOrderLines   SalesOrderLine[]
   invoiceLines      InvoiceLine[]
+  priceHistory      ProductPriceHistory[]
 
   @@unique([companyId, sku])
   @@index([barcode])
   @@index([name])
   @@map("product")
+}
+
+// HU-11.1 — append-only. Cada cambio de costo/margen/precio inserta una row.
+// `changeType` es 'COST' | 'SALE' (canónico). `source` ∈ 'MANUAL' | 'PURCHASE'
+// | 'IMPORT_XML'. Las columnas extendidas (`costValue`, `marginPct`, `reason`)
+// las introduce esta migración para guardar el snapshot trio + motivo.
+model ProductPriceHistory {
+  id          BigInt    @id @default(autoincrement())
+  companyId   BigInt    @map("company_id")
+  productId   BigInt    @map("product_id")
+  changeType  String    @map("change_type") @db.VarChar(10)
+  oldValue    Decimal?  @map("old_value") @db.Decimal(18, 4)
+  newValue    Decimal   @map("new_value") @db.Decimal(18, 4)
+  source      String?   @db.VarChar(15)
+  sourceId    BigInt?   @map("source_id")
+  changedBy   BigInt?   @map("changed_by")
+  changedAt   DateTime  @default(now()) @map("changed_at") @db.Timestamptz
+  costValue   Decimal?  @map("cost_value") @db.Decimal(18, 4)
+  marginPct   Decimal?  @map("margin_pct") @db.Decimal(7, 4)
+  reason      String?
+
+  product     Product   @relation(fields: [productId], references: [id])
+  company     Company   @relation(fields: [companyId], references: [id])
+  changedByUser AppUser? @relation(fields: [changedBy], references: [id])
+
+  @@index([productId, changedAt], map: "idx_pricehist_product")
+  @@map("product_price_history")
 }
 
 // HU-7.2 — Snapshot de existencias por producto y almacén. Las escrituras

@@ -227,6 +227,18 @@ const PERMISSIONS: PermissionSpec[] = [
     module: 'sales',
     description: 'Emitir facturas de venta (alimentan el kardex con OUT) y cancelarlas',
   },
+
+  // --- Precios (HU-11.1) ---
+  {
+    code: 'pricing.read',
+    module: 'pricing',
+    description: 'Ver costo, margen, precio y el historial de cambios del producto',
+  },
+  {
+    code: 'pricing.item.manage',
+    module: 'pricing',
+    description: 'Editar costo, margen, precio y margen mínimo de un producto',
+  },
 ];
 
 async function seedCurrencies(): Promise<void> {

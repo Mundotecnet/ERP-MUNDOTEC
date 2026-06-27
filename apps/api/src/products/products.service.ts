@@ -20,6 +20,9 @@ export interface ProductView {
   taxId: string | null;
   costPrice: string;
   salePrice: string;
+  marginPct: string;
+  minMarginPct: string;
+  outOfMargin: boolean;
   priceCurrency: string;
   isInventoried: boolean;
   trackingType: string;
@@ -43,6 +46,9 @@ interface ProductRow {
   taxId: bigint | null;
   costPrice: Prisma.Decimal;
   salePrice: Prisma.Decimal;
+  marginPct: Prisma.Decimal;
+  minMarginPct: Prisma.Decimal;
+  outOfMargin: boolean;
   priceCurrency: string;
   isInventoried: boolean;
   trackingType: string;
@@ -211,6 +217,9 @@ export class ProductsService {
       taxId: row.taxId === null ? null : row.taxId.toString(),
       costPrice: row.costPrice.toString(),
       salePrice: row.salePrice.toString(),
+      marginPct: row.marginPct.toString(),
+      minMarginPct: row.minMarginPct.toString(),
+      outOfMargin: row.outOfMargin,
       priceCurrency: row.priceCurrency,
       isInventoried: row.isInventoried,
       trackingType: row.trackingType,
