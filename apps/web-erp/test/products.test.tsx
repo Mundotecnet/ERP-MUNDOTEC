@@ -58,10 +58,31 @@ const PRICING_A = {
   name: 'Switch 24 puertos',
   priceCurrency: 'USD',
   costPrice: '100',
-  salePrice: '200',
-  marginPct: '0.5',
-  minMarginPct: '0.6', // por encima del margen efectivo → out_of_margin
+  minMarginPct: '0.6', // 60 %; agregado out_of_margin true porque P1=50% < 60%.
   outOfMargin: true,
+  levels: [
+    {
+      priceListId: '11',
+      name: 'Precio 1',
+      salePrice: '200',
+      marginPct: '0.5',
+      outOfMargin: true,
+    },
+    {
+      priceListId: '12',
+      name: 'Precio 2',
+      salePrice: '160',
+      marginPct: '0.375',
+      outOfMargin: true,
+    },
+    {
+      priceListId: '13',
+      name: 'Precio 3',
+      salePrice: '300',
+      marginPct: '0.6667',
+      outOfMargin: false,
+    },
+  ],
 };
 
 beforeEach(() => {
@@ -157,55 +178,99 @@ describe('ProductsPage', () => {
   });
 });
 
-describe('ProductsPage — pestaña Precios (HU-11.1)', () => {
+describe('ProductsPage — pestaña Precios 3 niveles (HU-11.2)', () => {
   async function openPricingTab(): Promise<ReturnType<typeof userEvent.setup>> {
     const user = userEvent.setup();
     setup();
     await user.click(await screen.findByRole('button', { name: /editar/i }));
     await waitFor(() => screen.getByRole('heading', { name: /editar producto/i }));
     await user.click(screen.getByRole('button', { name: 'Precios' }));
-    // Espera a que GET /products/1/pricing complete y rehidrate.
+    // Espera a que GET /products/1/pricing complete y rehidrate la tabla.
     await waitFor(() =>
       expect((document.getElementById('pricing-cost') as HTMLInputElement)?.value).toBe('100'),
     );
     return user;
   }
 
-  it('renderiza costo/margen/precio/margen mínimo y badge "fuera de margen"', async () => {
+  it('renderiza costo + margen mínimo (entero) + tabla con 3 niveles y badge agregado', async () => {
     await openPricingTab();
     expect((document.getElementById('pricing-cost') as HTMLInputElement).value).toBe('100');
-    expect((document.getElementById('pricing-price') as HTMLInputElement).value).toBe('200');
-    expect((document.getElementById('pricing-margin') as HTMLInputElement).value).toBe('0.5');
-    expect((document.getElementById('pricing-min-margin') as HTMLInputElement).value).toBe('0.6');
+    // 0.6 → entero 60 (UX en porcentaje entero).
+    expect((document.getElementById('pricing-min-margin') as HTMLInputElement).value).toBe('60');
+
+    // 3 filas en la tabla.
+    expect(screen.getByTestId('pricing-levels-table')).toBeInTheDocument();
+    expect(screen.getByTestId('pricing-level-row-0')).toBeInTheDocument();
+    expect(screen.getByTestId('pricing-level-row-1')).toBeInTheDocument();
+    expect(screen.getByTestId('pricing-level-row-2')).toBeInTheDocument();
+
+    // Conversión fracción → entero por nivel.
+    expect((document.getElementById('pricing-margin-0') as HTMLInputElement).value).toBe('50');
+    expect((document.getElementById('pricing-margin-1') as HTMLInputElement).value).toBe('37.5');
+    expect((document.getElementById('pricing-margin-2') as HTMLInputElement).value).toBe('66.67');
+    expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('200');
+    expect((document.getElementById('pricing-price-1') as HTMLInputElement).value).toBe('160');
+    expect((document.getElementById('pricing-price-2') as HTMLInputElement).value).toBe('300');
+
+    // Badge agregado porque P1 y P2 están bajo el piso (60 %).
     expect(screen.getByTestId('out-of-margin-badge')).toBeInTheDocument();
+    // Pero P3 (66.67 %) no muestra chip "Fuera".
+    expect(screen.getByTestId('pricing-level-out-0')).toBeInTheDocument();
+    expect(screen.getByTestId('pricing-level-out-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('pricing-level-out-2')).not.toBeInTheDocument();
   });
 
-  it('recálculo bidireccional en vivo: editar precio actualiza margen y viceversa', async () => {
+  it('recálculo bidireccional por fila (cost compartido): editar precio P2 actualiza margen P2 sin tocar P1/P3', async () => {
     const user = await openPricingTab();
 
-    // Editar precio → margen recalculado. cost=100, price=150 → margin=0.3333.
-    const priceInput = document.getElementById('pricing-price') as HTMLInputElement;
-    await user.clear(priceInput);
-    await user.type(priceInput, '150');
+    // Estado inicial: cost=100, P1=200/50%, P2=160/37.5%, P3=300/66.67%.
+    const price1 = document.getElementById('pricing-price-1') as HTMLInputElement;
+    await user.clear(price1);
+    await user.type(price1, '150');
+    // cost=100, price=150 → margin=0.3333 → entero "33.33".
     await waitFor(() =>
-      expect((document.getElementById('pricing-margin') as HTMLInputElement).value).toBe('0.3333'),
+      expect((document.getElementById('pricing-margin-1') as HTMLInputElement).value).toBe('33.33'),
     );
+    // P1 y P3 intactos.
+    expect((document.getElementById('pricing-margin-0') as HTMLInputElement).value).toBe('50');
+    expect((document.getElementById('pricing-margin-2') as HTMLInputElement).value).toBe('66.67');
+  });
 
-    // Editar margen → precio recalculado. cost=100, margin=0.25 → price=133.3333.
-    const marginInput = document.getElementById('pricing-margin') as HTMLInputElement;
-    await user.clear(marginInput);
-    await user.type(marginInput, '0.25');
+  it('editar margen en entero recalcula precio. 30 → fracción 0.3 → price=142.8571', async () => {
+    const user = await openPricingTab();
+
+    const margin0 = document.getElementById('pricing-margin-0') as HTMLInputElement;
+    await user.clear(margin0);
+    await user.type(margin0, '30');
+    // cost=100, margin=0.3 → price=142.8571.
     await waitFor(() =>
-      expect((document.getElementById('pricing-price') as HTMLInputElement).value).toBe('133.3333'),
+      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe(
+        '142.8571',
+      ),
     );
   });
 
-  it('al guardar envía PATCH /products/:id/pricing con el payload completo', async () => {
+  it('cambiar costo recalcula precio de cada nivel respetando su margen vigente', async () => {
+    const user = await openPricingTab();
+
+    const cost = document.getElementById('pricing-cost') as HTMLInputElement;
+    await user.clear(cost);
+    await user.type(cost, '200');
+
+    // P1 margin=0.5 → price=200/(1-0.5)=400
+    // P2 margin=0.375 → price=200/(1-0.375)=320
+    // P3 margin=0.6667 → price=200/(1-0.6667)≈600.06
+    await waitFor(() =>
+      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('400'),
+    );
+    expect((document.getElementById('pricing-price-1') as HTMLInputElement).value).toBe('320');
+    expect((document.getElementById('pricing-price-2') as HTMLInputElement).value).toBe('600.06');
+  });
+
+  it('al guardar envía PATCH con minMarginPct como fracción y levels[] convertidos', async () => {
     vi.mocked(api.patch).mockResolvedValueOnce({ data: PRICING_A });
     const user = await openPricingTab();
 
-    const reason = document.getElementById('pricing-reason') as HTMLInputElement;
-    await user.type(reason, 'ajuste de prueba');
     await user.click(screen.getByRole('button', { name: /guardar precios/i }));
 
     await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
@@ -213,84 +278,118 @@ describe('ProductsPage — pestaña Precios (HU-11.1)', () => {
     expect(url).toBe('/products/1/pricing');
     expect(body).toMatchObject({
       costPrice: '100',
-      salePrice: '200',
-      marginPct: '0.5',
-      minMarginPct: '0.6',
-      reason: 'ajuste de prueba',
+      minMarginPct: '0.6', // 60 entero → 0.6 fracción.
+      levels: [
+        { priceListId: '11', salePrice: '200', marginPct: '0.5' },
+        { priceListId: '12', salePrice: '160', marginPct: '0.375' },
+        { priceListId: '13', salePrice: '300', marginPct: '0.6667' },
+      ],
     });
   });
 });
 
-describe('ProductsPage — pestaña Precios en modo creación (PR-33)', () => {
-  it('al abrir la pestaña en "Nuevo producto" NO llama GET /products/:id/pricing y el recálculo funciona en cliente', async () => {
+describe('ProductsPage — pestaña Precios en modo creación', () => {
+  it('NO llama GET /products/:id/pricing y la tabla de 3 niveles funciona localmente', async () => {
     setup();
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: /nuevo producto/i }));
     await waitFor(() => screen.getByRole('heading', { name: /nuevo producto/i }));
     await user.click(screen.getByRole('button', { name: 'Precios' }));
 
-    // Esperar un tick para que cualquier fetch espurio tenga tiempo de ocurrir.
     await waitFor(() => expect(document.getElementById('pricing-cost')).toBeInTheDocument());
     const pricingFetchCalls = vi
       .mocked(api.get)
       .mock.calls.filter((c) => String(c[0]).includes('/pricing'));
     expect(pricingFetchCalls).toHaveLength(0);
-    // Sin botón "Guardar precios" propio en creación.
     expect(screen.queryByRole('button', { name: /guardar precios/i })).not.toBeInTheDocument();
-    // Sin sección de historial.
     expect(screen.queryByText(/historial de cambios/i)).not.toBeInTheDocument();
+    // 3 filas en la tabla.
+    expect(screen.getByTestId('pricing-level-row-0')).toBeInTheDocument();
+    expect(screen.getByTestId('pricing-level-row-2')).toBeInTheDocument();
 
-    // Recálculo bidireccional: cost=200, margen=0.25 → precio=266.6667.
-    const costInput = document.getElementById('pricing-cost') as HTMLInputElement;
-    await user.clear(costInput);
-    await user.type(costInput, '200');
-    const marginInput = document.getElementById('pricing-margin') as HTMLInputElement;
-    await user.clear(marginInput);
-    await user.type(marginInput, '0.25');
+    // Recálculo local: cost=200, margen P1=25 (entero) → precio=266.6667.
+    const cost = document.getElementById('pricing-cost') as HTMLInputElement;
+    await user.clear(cost);
+    await user.type(cost, '200');
+    const margin0 = document.getElementById('pricing-margin-0') as HTMLInputElement;
+    await user.clear(margin0);
+    await user.type(margin0, '25');
     await waitFor(() =>
-      expect((document.getElementById('pricing-price') as HTMLInputElement).value).toBe('266.6667'),
+      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe(
+        '266.6667',
+      ),
     );
   });
 
-  it('al Guardar desde General crea el producto y luego aplica el pricing en una sola operación', async () => {
+  it('al Guardar desde General: POST /products → GET /pricing (para ids) → PATCH /pricing con levels mapeados', async () => {
+    const NEW_PRICING = {
+      ...PRICING_A,
+      productId: '99',
+      costPrice: '0',
+      minMarginPct: '0',
+      outOfMargin: false,
+      levels: PRICING_A.levels.map((l) => ({
+        ...l,
+        salePrice: '0',
+        marginPct: '0',
+        outOfMargin: false,
+      })),
+    };
     vi.mocked(api.post).mockResolvedValueOnce({ data: { ...PRODUCT_A, id: '99' } });
-    vi.mocked(api.patch).mockResolvedValueOnce({ data: { productId: '99' } });
+    // El extra GET tras el POST (para resolver priceListId).
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === '/products') return { data: [PRODUCT_A] };
+      if (url === '/products/99/pricing') return { data: NEW_PRICING };
+      if (url === '/products/1/pricing') return { data: PRICING_A };
+      if (url === '/products/1/pricing/history') return { data: [] };
+      if (url === '/product-categories') return { data: [{ id: '10', name: 'Networking' }] };
+      if (url === '/units-of-measure') return { data: [{ id: '5', code: 'UND', name: 'Unidad' }] };
+      if (url === '/taxes') return { data: [{ id: '7', name: 'IVA 13%' }] };
+      if (url === '/departments') return { data: [{ id: '3', name: 'Bodega' }] };
+      return { data: [] };
+    });
+    vi.mocked(api.patch).mockResolvedValueOnce({ data: NEW_PRICING });
 
     setup();
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: /nuevo producto/i }));
     await waitFor(() => screen.getByRole('heading', { name: /nuevo producto/i }));
 
-    // Carga la pestaña Precios y captura valores antes de guardar.
+    // Pongo costo + margen P1 en la pestaña Precios (% entero).
     await user.click(screen.getByRole('button', { name: 'Precios' }));
-    const costInput = document.getElementById('pricing-cost') as HTMLInputElement;
-    await user.clear(costInput);
-    await user.type(costInput, '150');
-    const marginInput = document.getElementById('pricing-margin') as HTMLInputElement;
-    await user.clear(marginInput);
-    await user.type(marginInput, '0.3');
+    const cost = document.getElementById('pricing-cost') as HTMLInputElement;
+    await user.clear(cost);
+    await user.type(cost, '150');
+    const margin0 = document.getElementById('pricing-margin-0') as HTMLInputElement;
+    await user.clear(margin0);
+    await user.type(margin0, '30');
     await waitFor(() =>
-      expect((document.getElementById('pricing-price') as HTMLInputElement).value).toBe('214.2857'),
+      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe(
+        '214.2857',
+      ),
     );
 
-    // Vuelve a General para completar SKU + nombre + UM y guardar.
+    // Completa General + guardar.
     await user.click(screen.getByRole('button', { name: 'General' }));
     await user.type(screen.getByLabelText('SKU'), 'SKU-NEW');
     await user.type(screen.getByLabelText('Nombre'), 'Producto con precio');
     await user.selectOptions(screen.getByLabelText(/unidad de medida/i), '5');
     await user.click(screen.getByRole('button', { name: /^guardar$/i }));
 
-    // POST /products primero, después PATCH /products/99/pricing.
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
     expect(vi.mocked(api.post).mock.calls[0][0]).toBe('/products');
+
     const [patchUrl, patchBody] = vi.mocked(api.patch).mock.calls[0];
     expect(patchUrl).toBe('/products/99/pricing');
     expect(patchBody).toMatchObject({
       costPrice: '150',
-      marginPct: '0.3',
-      salePrice: '214.2857',
       minMarginPct: '0',
+      levels: [
+        { priceListId: '11', salePrice: '214.2857', marginPct: '0.3' },
+        { priceListId: '12', salePrice: '0', marginPct: '0' },
+        { priceListId: '13', salePrice: '0', marginPct: '0' },
+      ],
     });
   });
 });

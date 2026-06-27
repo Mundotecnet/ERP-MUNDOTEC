@@ -320,13 +320,16 @@ function ProductDialog(props: ProductDialogProps): JSX.Element {
     mutationFn: async (values: ProductFormValues) => {
       const payload = formToPayload(values);
       if (props.mode === 'create') {
-        // Crea producto primero, después aplica el pricing si el usuario
-        // tocó algo en la pestaña Precios. El bug PR-33 era que la pestaña
-        // intentaba GET /products/:id/pricing sin id — ahora la pestaña en
-        // create modo es totalmente local y el id solo aparece tras el POST.
+        // 1. Crea el producto (auto-seedea sus 3 price_list_item en server).
+        // 2. Si el usuario tocó algo en Precios, hacemos un GET para obtener
+        //    los priceListId reales (recién creados) y luego PATCH con el
+        //    payload completo: costo + minMargin + niveles con sus ids.
+        // 3. Si no tocó nada, el producto queda con los 3 niveles en 0/0.
         const created = (await api.post('/products', payload)).data;
         if (pricingForm.isDirty()) {
-          await api.patch(`/products/${created.id}/pricing`, pricingForm.buildPayload());
+          const view = (await api.get(`/products/${created.id}/pricing`)).data as PricingView;
+          const ids = view.levels.map((l) => l.priceListId);
+          await api.patch(`/products/${created.id}/pricing`, pricingForm.buildPayload(ids));
         }
         return created;
       }
@@ -571,16 +574,36 @@ SelectInput.displayName = 'SelectInput';
 // compras) y dejará de ser editable directamente desde acá. En PR-32 sigue
 // siendo el valor inicial / manual del catálogo.
 
+// ============================================================================
+// PR-34 — 3 niveles fijos (Precio 1 / Precio 2 / Precio 3)
+// ============================================================================
+//
+// Convención de UX: el margen y el margen mínimo se editan/muestran como
+// ENTERO % (30 = 30 %, 30.5 = 30.5 %). Internamente se almacenan y se
+// transmiten al backend como fracción [0, 1) (0.3, 0.305). Los conversores
+// `intPctToFrac` y `fracToIntPct` viven más abajo.
+//
+// El costo y el margen mínimo son únicos por producto. Los 3 niveles tienen
+// cada uno su propio margen + precio venta, ligados por el mismo costo
+// compartido. Recálculo bidireccional por fila.
+
+interface PricingLevelView {
+  priceListId: string;
+  name: string;
+  salePrice: string; // string decimal (fracción "150.0000")
+  marginPct: string; // fracción (string "0.3000")
+  outOfMargin: boolean;
+}
+
 interface PricingView {
   productId: string;
   sku: string;
   name: string;
   priceCurrency: string;
   costPrice: string;
-  salePrice: string;
-  marginPct: string;
-  minMarginPct: string;
-  outOfMargin: boolean;
+  minMarginPct: string; // fracción
+  outOfMargin: boolean; // agregado (any level out)
+  levels: PricingLevelView[]; // 3 items en orden P1, P2, P3
 }
 
 interface PricingHistoryEntry {
@@ -593,6 +616,8 @@ interface PricingHistoryEntry {
   oldValue: string | null;
   newValue: string;
   changedByName: string | null;
+  priceListId: string | null;
+  priceListName: string | null;
   changedAt: string;
 }
 
@@ -609,9 +634,28 @@ function fmt4(n: number): string {
     .replace(/^$/, '0');
 }
 
-// Cliente: las mismas fórmulas del backend (pricing.formula.ts). Replicamos
-// acá la versión número-flotante solo para la UI en vivo; el server tiene la
-// versión decimal precisa y valida cualquier valor que mandemos.
+// "30" (entero %) → "0.3" (fracción). Soporta decimales en el entero.
+function intPctToFrac(intStr: string): string {
+  const n = Number(intStr);
+  if (!Number.isFinite(n)) return '0';
+  // Dividir por 100 y limitar a 4 decimales (precisión del backend).
+  const raw = (n / 100).toFixed(4);
+  const stripped = raw.replace(/\.?0+$/, '');
+  return stripped === '' ? '0' : stripped;
+}
+
+// 0.3 (fracción) → "30" (entero %). Acepta string también ("0.3").
+function fracToIntPct(frac: number | string): string {
+  const n = typeof frac === 'string' ? Number(frac) : frac;
+  if (!Number.isFinite(n)) return '0';
+  const pct = n * 100;
+  // Permitir hasta 2 decimales en el porcentaje entero ("30.5", "30.55").
+  const raw = pct.toFixed(2);
+  const stripped = raw.replace(/\.?0+$/, '');
+  return stripped === '' ? '0' : stripped;
+}
+
+// Cliente: mismas fórmulas que el backend (pricing.formula.ts).
 function clientPriceFromMargin(cost: number, margin: number): number {
   if (!(cost > 0) || margin >= 1 || margin < 0) return 0;
   return cost / (1 - margin);
@@ -622,102 +666,140 @@ function clientMarginFromPrice(cost: number, price: number): number {
   return raw >= 0.9999 ? 0.9999 : raw;
 }
 
+// Estado por fila. `priceListId` puede ser null en modo creación (el id se
+// asigna server-side al hacer POST + auto-seed de las 3 listas).
+interface LevelRowState {
+  priceListId: string | null;
+  name: string;
+  salePriceStr: string; // decimal string
+  marginIntStr: string; // entero % (string)
+}
+
 interface PricingFormHandle {
   costStr: string;
-  salePriceStr: string;
-  marginPctStr: string;
-  minMarginPctStr: string;
+  minMarginIntStr: string; // entero %
   reason: string;
+  levels: LevelRowState[];
   setReason(v: string): void;
-  setMinMarginPctStr(v: string): void;
+  setMinMarginIntStr(v: string): void;
   onChangeCost(v: string): void;
-  onChangePrice(v: string): void;
-  onChangeMargin(v: string): void;
-  hydrate(p: {
-    costPrice: string;
-    salePrice: string;
-    marginPct: string;
-    minMarginPct: string;
-  }): void;
+  onChangeLevelPrice(idx: number, v: string): void;
+  onChangeLevelMargin(idx: number, v: string): void;
+  hydrate(v: PricingView): void;
   isDirty(): boolean;
-  buildPayload(): Record<string, string>;
+  /**
+   * Construye el payload PATCH /products/:id/pricing.
+   * Si `levelIdOverrides` se provee (caso creación), se usan esos
+   * priceListId en orden para las 3 filas que no tengan id propio.
+   */
+  buildPayload(levelIdOverrides?: string[]): Record<string, unknown>;
 }
+
+const DEFAULT_LEVELS: LevelRowState[] = [
+  { priceListId: null, name: 'Precio 1', salePriceStr: '0', marginIntStr: '0' },
+  { priceListId: null, name: 'Precio 2', salePriceStr: '0', marginIntStr: '0' },
+  { priceListId: null, name: 'Precio 3', salePriceStr: '0', marginIntStr: '0' },
+];
 
 function usePricingForm(): PricingFormHandle {
   const [costStr, setCostStr] = React.useState('0');
-  const [salePriceStr, setSalePriceStr] = React.useState('0');
-  const [marginPctStr, setMarginPctStr] = React.useState('0');
-  const [minMarginPctStr, setMinMarginPctStr] = React.useState('0');
+  const [minMarginIntStr, setMinMarginIntStr] = React.useState('0');
   const [reason, setReason] = React.useState('');
-
-  const cost = parseNum(costStr);
-  const margin = parseNum(marginPctStr);
+  const [levels, setLevels] = React.useState<LevelRowState[]>(() =>
+    DEFAULT_LEVELS.map((l) => ({ ...l })),
+  );
 
   function onChangeCost(v: string) {
     setCostStr(v);
     const c = parseNum(v);
-    if (c > 0 && margin > 0 && margin < 1) {
-      setSalePriceStr(fmt4(clientPriceFromMargin(c, margin)));
-    }
-  }
-  function onChangePrice(v: string) {
-    setSalePriceStr(v);
-    const p = parseNum(v);
-    setMarginPctStr(fmt4(clientMarginFromPrice(cost, p)));
-  }
-  function onChangeMargin(v: string) {
-    setMarginPctStr(v);
-    const m = parseNum(v);
-    setSalePriceStr(fmt4(clientPriceFromMargin(cost, m)));
-  }
-
-  function hydrate(p: {
-    costPrice: string;
-    salePrice: string;
-    marginPct: string;
-    minMarginPct: string;
-  }) {
-    setCostStr(p.costPrice);
-    setSalePriceStr(p.salePrice);
-    setMarginPctStr(p.marginPct);
-    setMinMarginPctStr(p.minMarginPct);
-  }
-
-  function isDirty(): boolean {
-    // En modo creación, sirve para decidir si vale la pena llamar a PATCH
-    // /products/:id/pricing tras el POST. Si el usuario no tocó nada de
-    // precios queda como '0' por defecto y omitimos el PATCH.
-    return (
-      costStr !== '0' ||
-      salePriceStr !== '0' ||
-      marginPctStr !== '0' ||
-      minMarginPctStr !== '0' ||
-      reason.trim().length > 0
+    setLevels((prev) =>
+      prev.map((l) => {
+        const m = parseNum(intPctToFrac(l.marginIntStr));
+        if (c > 0 && m > 0 && m < 1) {
+          return { ...l, salePriceStr: fmt4(clientPriceFromMargin(c, m)) };
+        }
+        return l;
+      }),
     );
   }
 
-  function buildPayload(): Record<string, string> {
-    const payload: Record<string, string> = {
+  function onChangeLevelPrice(idx: number, v: string) {
+    const c = parseNum(costStr);
+    setLevels((prev) =>
+      prev.map((l, i) => {
+        if (i !== idx) return l;
+        const p = parseNum(v);
+        const newMarginFrac = clientMarginFromPrice(c, p);
+        return { ...l, salePriceStr: v, marginIntStr: fracToIntPct(newMarginFrac) };
+      }),
+    );
+  }
+
+  function onChangeLevelMargin(idx: number, v: string) {
+    const c = parseNum(costStr);
+    setLevels((prev) =>
+      prev.map((l, i) => {
+        if (i !== idx) return l;
+        const m = parseNum(intPctToFrac(v));
+        const newPrice = clientPriceFromMargin(c, m);
+        return { ...l, salePriceStr: fmt4(newPrice), marginIntStr: v };
+      }),
+    );
+  }
+
+  function hydrate(v: PricingView) {
+    setCostStr(v.costPrice);
+    setMinMarginIntStr(fracToIntPct(v.minMarginPct));
+    setLevels(
+      v.levels.map((lvl) => ({
+        priceListId: lvl.priceListId,
+        name: lvl.name,
+        salePriceStr: lvl.salePrice,
+        marginIntStr: fracToIntPct(lvl.marginPct),
+      })),
+    );
+  }
+
+  function isDirty(): boolean {
+    return (
+      costStr !== '0' ||
+      minMarginIntStr !== '0' ||
+      reason.trim().length > 0 ||
+      levels.some((l) => l.salePriceStr !== '0' || l.marginIntStr !== '0')
+    );
+  }
+
+  function buildPayload(levelIdOverrides?: string[]): Record<string, unknown> {
+    const payload: Record<string, unknown> = {
       costPrice: costStr,
-      salePrice: salePriceStr,
-      marginPct: marginPctStr,
-      minMarginPct: minMarginPctStr,
+      minMarginPct: intPctToFrac(minMarginIntStr),
     };
     if (reason.trim()) payload.reason = reason.trim();
+    const lvls = levels
+      .map((l, i) => {
+        const id = l.priceListId ?? levelIdOverrides?.[i];
+        if (!id) return null;
+        return {
+          priceListId: id,
+          salePrice: l.salePriceStr,
+          marginPct: intPctToFrac(l.marginIntStr),
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+    if (lvls.length > 0) payload.levels = lvls;
     return payload;
   }
 
   return {
     costStr,
-    salePriceStr,
-    marginPctStr,
-    minMarginPctStr,
+    minMarginIntStr,
     reason,
+    levels,
     setReason,
-    setMinMarginPctStr,
+    setMinMarginIntStr,
     onChangeCost,
-    onChangePrice,
-    onChangeMargin,
+    onChangeLevelPrice,
+    onChangeLevelMargin,
     hydrate,
     isDirty,
     buildPayload,
@@ -735,9 +817,6 @@ function PricingTab(props: {
   const [serverError, setServerError] = React.useState<string | null>(null);
   const isEdit = props.mode === 'edit' && props.productId !== null;
 
-  // Fetch del pricing existente y del historial: SOLO en edición. En creación
-  // no hay productId todavía; cualquier GET acá tiraría 404 y la pestaña
-  // mostraría error (el bug que motivó este PR).
   const pricingQ = useQuery<PricingView>({
     queryKey: ['pricing', props.productId],
     queryFn: async () => (await api.get(`/products/${props.productId}/pricing`)).data,
@@ -750,18 +829,18 @@ function PricingTab(props: {
   });
 
   // Hidrata el form solo cuando el server devuelve datos (no en creación).
-  // Intencionalmente NO incluimos `form.hydrate` como dep: su identidad
-  // cambia en cada render (closure sobre setState) y reejectaría el efecto
-  // pisando lo que esté escribiendo el usuario.
   React.useEffect(() => {
     if (isEdit && pricingQ.data) {
       form.hydrate(pricingQ.data);
     }
   }, [isEdit, pricingQ.data]);
 
-  const margin = parseNum(form.marginPctStr);
-  const minMargin = parseNum(form.minMarginPctStr);
-  const outOfMargin = minMargin > 0 && margin < minMargin;
+  // Agregado: cualquier nivel cuyo margen efectivo (entero %) caiga por
+  // debajo del piso → out of margin.
+  const minMarginFrac = parseNum(intPctToFrac(form.minMarginIntStr));
+  const anyOutOfMargin =
+    minMarginFrac > 0 &&
+    form.levels.some((l) => parseNum(intPctToFrac(l.marginIntStr)) < minMarginFrac);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -791,8 +870,6 @@ function PricingTab(props: {
     return <p className="text-sm text-destructive">No se pudieron cargar los precios.</p>;
   }
 
-  // En creación, todavía no sabemos la moneda del producto (se asigna
-  // server-side al hacer POST). Mostramos las etiquetas sin sufijo de moneda.
   const currency = isEdit && pricingQ.data ? pricingQ.data.priceCurrency : '';
   const currencyLabel = currency ? ` (${currency})` : '';
 
@@ -800,8 +877,8 @@ function PricingTab(props: {
     <div className="flex flex-col gap-4">
       <p className="text-xs text-muted-foreground">
         {isEdit
-          ? 'El margen se calcula sobre el precio de venta. Cambia cualquier campo y los demás se recalculan en vivo. El costo se guarda manualmente por ahora; en una próxima entrega lo derivaremos del kardex de compras (promedio ponderado).'
-          : 'Define costo, margen, precio y margen mínimo para el nuevo producto. Se guardarán automáticamente cuando confirmes el producto desde la pestaña General. El recálculo es bidireccional: editás un campo y los otros se ajustan.'}
+          ? 'El margen se calcula sobre el precio de venta. Cambia cualquier campo y los demás se recalculan en vivo. El costo y el margen mínimo son compartidos por los tres niveles. Margen se ingresa como porcentaje entero (30 = 30 %).'
+          : 'Define costo, margen mínimo y los tres niveles para el nuevo producto. Se guardarán cuando confirmes el producto desde la pestaña General. Margen en porcentaje entero (30 = 30 %); el recálculo por fila es bidireccional.'}
       </p>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -813,55 +890,91 @@ function PricingTab(props: {
             onChange={(e) => form.onChangeCost(e.target.value)}
           />
         </Field>
-        <Field label="Margen %" htmlFor="pricing-margin">
-          <Input
-            id="pricing-margin"
-            inputMode="decimal"
-            value={form.marginPctStr}
-            onChange={(e) => form.onChangeMargin(e.target.value)}
-            aria-describedby="pricing-margin-hint"
-          />
-          <span id="pricing-margin-hint" className="text-xs text-muted-foreground">
-            Fracción (0.30 = 30 %)
-          </span>
-        </Field>
-        <Field label={`Precio venta${currencyLabel}`} htmlFor="pricing-price">
-          <Input
-            id="pricing-price"
-            inputMode="decimal"
-            value={form.salePriceStr}
-            onChange={(e) => form.onChangePrice(e.target.value)}
-          />
-        </Field>
         <Field label="Margen mínimo %" htmlFor="pricing-min-margin">
           <Input
             id="pricing-min-margin"
             inputMode="decimal"
-            value={form.minMarginPctStr}
-            onChange={(e) => form.setMinMarginPctStr(e.target.value)}
+            value={form.minMarginIntStr}
+            onChange={(e) => form.setMinMarginIntStr(e.target.value)}
           />
         </Field>
-        {isEdit && (
-          <Field label="Motivo del cambio (opcional)" htmlFor="pricing-reason" fullWidth>
-            <Input
-              id="pricing-reason"
-              maxLength={250}
-              value={form.reason}
-              onChange={(e) => form.setReason(e.target.value)}
-              placeholder="Ej.: ajuste por nueva lista de proveedor"
-            />
-          </Field>
-        )}
       </div>
 
-      {outOfMargin && (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm" data-testid="pricing-levels-table">
+          <thead>
+            <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+              <th className="py-2 pr-4 font-medium">Nivel</th>
+              <th className="py-2 pr-4 font-medium">Margen %</th>
+              <th className="py-2 pr-4 font-medium">Precio venta{currencyLabel}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {form.levels.map((lvl, i) => {
+              const lvlMargin = parseNum(intPctToFrac(lvl.marginIntStr));
+              const lvlOut = minMarginFrac > 0 && lvlMargin < minMarginFrac;
+              return (
+                <tr
+                  key={lvl.name}
+                  className="border-b last:border-b-0"
+                  data-testid={`pricing-level-row-${i}`}
+                >
+                  <td className="py-2 pr-4 font-medium">
+                    {lvl.name}
+                    {lvlOut && (
+                      <span
+                        className="ml-2 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-800"
+                        data-testid={`pricing-level-out-${i}`}
+                      >
+                        Fuera
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2 pr-4">
+                    <Input
+                      id={`pricing-margin-${i}`}
+                      inputMode="decimal"
+                      value={lvl.marginIntStr}
+                      onChange={(e) => form.onChangeLevelMargin(i, e.target.value)}
+                      className="max-w-28"
+                    />
+                  </td>
+                  <td className="py-2 pr-4">
+                    <Input
+                      id={`pricing-price-${i}`}
+                      inputMode="decimal"
+                      value={lvl.salePriceStr}
+                      onChange={(e) => form.onChangeLevelPrice(i, e.target.value)}
+                      className="max-w-40"
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {isEdit && (
+        <Field label="Motivo del cambio (opcional)" htmlFor="pricing-reason">
+          <Input
+            id="pricing-reason"
+            maxLength={250}
+            value={form.reason}
+            onChange={(e) => form.setReason(e.target.value)}
+            placeholder="Ej.: ajuste por nueva lista de proveedor"
+          />
+        </Field>
+      )}
+
+      {anyOutOfMargin && (
         <div
           role="alert"
           data-testid="out-of-margin-badge"
           className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-800"
         >
-          ⚠ Fuera de margen: el margen efectivo ({(margin * 100).toFixed(2)} %) está por debajo del
-          piso configurado ({(minMargin * 100).toFixed(2)} %).
+          ⚠ Fuera de margen: al menos un nivel tiene margen efectivo por debajo del piso
+          configurado ({form.minMarginIntStr} %).
         </div>
       )}
 
@@ -896,9 +1009,11 @@ function PricingTab(props: {
                   <tr className="border-b text-left uppercase text-muted-foreground">
                     <th className="py-1 pr-3 font-medium">Fecha</th>
                     <th className="py-1 pr-3 font-medium">Usuario</th>
+                    <th className="py-1 pr-3 font-medium">Nivel</th>
+                    <th className="py-1 pr-3 font-medium">Tipo</th>
                     <th className="py-1 pr-3 font-medium">Costo</th>
                     <th className="py-1 pr-3 font-medium">Margen</th>
-                    <th className="py-1 pr-3 font-medium">Precio</th>
+                    <th className="py-1 pr-3 font-medium">Valor</th>
                     <th className="py-1 pr-3 font-medium">Motivo</th>
                   </tr>
                 </thead>
@@ -909,8 +1024,12 @@ function PricingTab(props: {
                         {new Date(h.changedAt).toLocaleString()}
                       </td>
                       <td className="py-1 pr-3">{h.changedByName ?? '—'}</td>
+                      <td className="py-1 pr-3">{h.priceListName ?? '—'}</td>
+                      <td className="py-1 pr-3">{h.changeType}</td>
                       <td className="py-1 pr-3">{h.costValue ?? '—'}</td>
-                      <td className="py-1 pr-3">{h.marginPct ?? '—'}</td>
+                      <td className="py-1 pr-3">
+                        {h.marginPct ? fracToIntPct(h.marginPct) + ' %' : '—'}
+                      </td>
                       <td className="py-1 pr-3">{h.newValue}</td>
                       <td className="py-1 pr-3">{h.reason ?? '—'}</td>
                     </tr>

@@ -60,6 +60,7 @@ model Company {
   salesOrders       SalesOrder[]
   invoices          Invoice[]
   priceHistory      ProductPriceHistory[]
+  priceLists        PriceList[]
 
   @@map("company")
 }
@@ -276,6 +277,7 @@ model Currency {
   symbol String? @db.VarChar(6)
 
   exchangeRates ExchangeRate[]
+  priceLists    PriceList[]
 
   @@map("currency")
 }
@@ -384,6 +386,7 @@ model Product {
   salesOrderLines   SalesOrderLine[]
   invoiceLines      InvoiceLine[]
   priceHistory      ProductPriceHistory[]
+  priceListItems    PriceListItem[]
 
   @@unique([companyId, sku])
   @@index([barcode])
@@ -409,13 +412,57 @@ model ProductPriceHistory {
   costValue   Decimal?  @map("cost_value") @db.Decimal(18, 4)
   marginPct   Decimal?  @map("margin_pct") @db.Decimal(7, 4)
   reason      String?
+  // PR-34: NULL para cambios que no pertenecen a un nivel (costo, min_margin).
+  priceListId BigInt?   @map("price_list_id")
 
   product     Product   @relation(fields: [productId], references: [id])
   company     Company   @relation(fields: [companyId], references: [id])
   changedByUser AppUser? @relation(fields: [changedBy], references: [id])
+  priceList   PriceList? @relation(fields: [priceListId], references: [id])
 
   @@index([productId, changedAt], map: "idx_pricehist_product")
+  @@index([priceListId], map: "idx_pricehist_pricelist")
   @@map("product_price_history")
+}
+
+// HU-11.2 / PR-34 — Listas de precios. Por empresa, 3 listas seedeadas
+// "Precio 1", "Precio 2", "Precio 3" (tipo SALE). Definido en canónico
+// db/erp_schema.sql §8 (líneas 549–568) + extensión §22.
+model PriceList {
+  id           BigInt   @id @default(autoincrement())
+  companyId    BigInt   @map("company_id")
+  name         String   @db.VarChar(100)
+  currencyCode String   @map("currency_code") @db.Char(3)
+  listType     String   @default("SALE") @map("list_type") @db.VarChar(10)
+  isActive     Boolean  @default(true) @map("is_active")
+
+  company      Company           @relation(fields: [companyId], references: [id])
+  currency     Currency          @relation(fields: [currencyCode], references: [code])
+  items        PriceListItem[]
+  priceHistory ProductPriceHistory[]
+
+  @@unique([companyId, name])
+  @@map("price_list")
+}
+
+model PriceListItem {
+  id           BigInt   @id @default(autoincrement())
+  priceListId  BigInt   @map("price_list_id")
+  productId    BigInt   @map("product_id")
+  price        Decimal  @db.Decimal(18, 4)
+  minQuantity  Decimal  @default(1) @map("min_quantity") @db.Decimal(18, 4)
+  validFrom    DateTime? @map("valid_from") @db.Date
+  validTo      DateTime? @map("valid_to") @db.Date
+  // PR-34 — margen objetivo capturado al fijar el precio (no se recalcula
+  // automáticamente). CHECK 0 ≤ x < 1 aplicado en migración SQL.
+  marginPct    Decimal  @default(0) @map("margin_pct") @db.Decimal(7, 4)
+  outOfMargin  Boolean  @default(false) @map("out_of_margin")
+
+  priceList    PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  product      Product   @relation(fields: [productId], references: [id])
+
+  @@unique([priceListId, productId, minQuantity])
+  @@map("price_list_item")
 }
 
 // HU-7.2 — Snapshot de existencias por producto y almacén. Las escrituras

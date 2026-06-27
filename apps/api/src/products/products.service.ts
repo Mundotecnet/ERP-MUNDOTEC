@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { ParsedCreateProduct, ParsedUpdateProduct } from './dto/products.dto';
+import { PricingService } from './pricing/pricing.service';
 
 export interface ProductView {
   id: string;
@@ -63,7 +64,10 @@ interface ProductRow {
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pricing: PricingService,
+  ) {}
 
   async list(companyId: bigint): Promise<ProductView[]> {
     const rows = await this.prisma.raw.product.findMany({
@@ -90,10 +94,17 @@ export class ProductsService {
       priceCurrency: data.priceCurrency,
     });
     try {
-      const row = await this.prisma.client.product.create({
-        data: { companyId, ...data, updatedAt: new Date() },
+      // PR-34: la creación del producto y el seed de sus 3 price_list_item
+      // viven en una sola transacción para que un fallo del segundo no deje
+      // un producto sin niveles. ensureProductPriceLevels también garantiza
+      // que la empresa tenga las 3 listas P1/P2/P3.
+      return await this.prisma.client.$transaction(async (tx) => {
+        const row = await tx.product.create({
+          data: { companyId, ...data, updatedAt: new Date() },
+        });
+        await this.pricing.ensureProductPriceLevels(tx, companyId, row.id);
+        return this.toView(row);
       });
-      return this.toView(row);
     } catch (err) {
       this.translatePrismaError(err);
     }
