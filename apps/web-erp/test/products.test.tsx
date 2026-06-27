@@ -220,3 +220,77 @@ describe('ProductsPage — pestaña Precios (HU-11.1)', () => {
     });
   });
 });
+
+describe('ProductsPage — pestaña Precios en modo creación (PR-33)', () => {
+  it('al abrir la pestaña en "Nuevo producto" NO llama GET /products/:id/pricing y el recálculo funciona en cliente', async () => {
+    setup();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /nuevo producto/i }));
+    await waitFor(() => screen.getByRole('heading', { name: /nuevo producto/i }));
+    await user.click(screen.getByRole('button', { name: 'Precios' }));
+
+    // Esperar un tick para que cualquier fetch espurio tenga tiempo de ocurrir.
+    await waitFor(() => expect(document.getElementById('pricing-cost')).toBeInTheDocument());
+    const pricingFetchCalls = vi
+      .mocked(api.get)
+      .mock.calls.filter((c) => String(c[0]).includes('/pricing'));
+    expect(pricingFetchCalls).toHaveLength(0);
+    // Sin botón "Guardar precios" propio en creación.
+    expect(screen.queryByRole('button', { name: /guardar precios/i })).not.toBeInTheDocument();
+    // Sin sección de historial.
+    expect(screen.queryByText(/historial de cambios/i)).not.toBeInTheDocument();
+
+    // Recálculo bidireccional: cost=200, margen=0.25 → precio=266.6667.
+    const costInput = document.getElementById('pricing-cost') as HTMLInputElement;
+    await user.clear(costInput);
+    await user.type(costInput, '200');
+    const marginInput = document.getElementById('pricing-margin') as HTMLInputElement;
+    await user.clear(marginInput);
+    await user.type(marginInput, '0.25');
+    await waitFor(() =>
+      expect((document.getElementById('pricing-price') as HTMLInputElement).value).toBe('266.6667'),
+    );
+  });
+
+  it('al Guardar desde General crea el producto y luego aplica el pricing en una sola operación', async () => {
+    vi.mocked(api.post).mockResolvedValueOnce({ data: { ...PRODUCT_A, id: '99' } });
+    vi.mocked(api.patch).mockResolvedValueOnce({ data: { productId: '99' } });
+
+    setup();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /nuevo producto/i }));
+    await waitFor(() => screen.getByRole('heading', { name: /nuevo producto/i }));
+
+    // Carga la pestaña Precios y captura valores antes de guardar.
+    await user.click(screen.getByRole('button', { name: 'Precios' }));
+    const costInput = document.getElementById('pricing-cost') as HTMLInputElement;
+    await user.clear(costInput);
+    await user.type(costInput, '150');
+    const marginInput = document.getElementById('pricing-margin') as HTMLInputElement;
+    await user.clear(marginInput);
+    await user.type(marginInput, '0.3');
+    await waitFor(() =>
+      expect((document.getElementById('pricing-price') as HTMLInputElement).value).toBe('214.2857'),
+    );
+
+    // Vuelve a General para completar SKU + nombre + UM y guardar.
+    await user.click(screen.getByRole('button', { name: 'General' }));
+    await user.type(screen.getByLabelText('SKU'), 'SKU-NEW');
+    await user.type(screen.getByLabelText('Nombre'), 'Producto con precio');
+    await user.selectOptions(screen.getByLabelText(/unidad de medida/i), '5');
+    await user.click(screen.getByRole('button', { name: /^guardar$/i }));
+
+    // POST /products primero, después PATCH /products/99/pricing.
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.post).mock.calls[0][0]).toBe('/products');
+    const [patchUrl, patchBody] = vi.mocked(api.patch).mock.calls[0];
+    expect(patchUrl).toBe('/products/99/pricing');
+    expect(patchBody).toMatchObject({
+      costPrice: '150',
+      marginPct: '0.3',
+      salePrice: '214.2857',
+      minMarginPct: '0',
+    });
+  });
+});

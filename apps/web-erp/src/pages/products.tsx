@@ -302,6 +302,10 @@ interface ProductDialogProps {
 function ProductDialog(props: ProductDialogProps): JSX.Element {
   const qc = useQueryClient();
   const [serverError, setServerError] = React.useState<string | null>(null);
+  // El estado de la pestaña Precios vive acá (lifted) para que en modo
+  // creación el "Guardar" del form general también persista los precios sin
+  // necesidad de fetch ni de id previo.
+  const pricingForm = usePricingForm();
 
   const {
     register,
@@ -316,7 +320,15 @@ function ProductDialog(props: ProductDialogProps): JSX.Element {
     mutationFn: async (values: ProductFormValues) => {
       const payload = formToPayload(values);
       if (props.mode === 'create') {
-        return (await api.post('/products', payload)).data;
+        // Crea producto primero, después aplica el pricing si el usuario
+        // tocó algo en la pestaña Precios. El bug PR-33 era que la pestaña
+        // intentaba GET /products/:id/pricing sin id — ahora la pestaña en
+        // create modo es totalmente local y el id solo aparece tras el POST.
+        const created = (await api.post('/products', payload)).data;
+        if (pricingForm.isDirty()) {
+          await api.patch(`/products/${created.id}/pricing`, pricingForm.buildPayload());
+        }
+        return created;
       }
       return (await api.patch(`/products/${props.productId}`, payload)).data;
     },
@@ -335,7 +347,6 @@ function ProductDialog(props: ProductDialogProps): JSX.Element {
   });
 
   const [activeTab, setActiveTab] = React.useState<'general' | 'pricing'>('general');
-  const isEdit = props.mode === 'edit' && props.productId !== null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -352,10 +363,8 @@ function ProductDialog(props: ProductDialogProps): JSX.Element {
             </TabButton>
             <TabButton
               active={activeTab === 'pricing'}
-              onClick={() => isEdit && setActiveTab('pricing')}
+              onClick={() => setActiveTab('pricing')}
               id="tab-pricing"
-              disabled={!isEdit}
-              title={!isEdit ? 'Disponible después de crear el producto' : undefined}
             >
               Precios
             </TabButton>
@@ -480,8 +489,13 @@ function ProductDialog(props: ProductDialogProps): JSX.Element {
             </form>
           )}
 
-          {activeTab === 'pricing' && isEdit && (
-            <PricingTab productId={props.productId!} onClose={props.onClose} />
+          {activeTab === 'pricing' && (
+            <PricingTab
+              mode={props.mode}
+              productId={props.productId}
+              form={pricingForm}
+              onClose={props.onClose}
+            />
           )}
         </CardContent>
       </Card>
@@ -608,43 +622,40 @@ function clientMarginFromPrice(cost: number, price: number): number {
   return raw >= 0.9999 ? 0.9999 : raw;
 }
 
-function PricingTab(props: { productId: string; onClose(): void }): JSX.Element {
-  const qc = useQueryClient();
-  const [serverError, setServerError] = React.useState<string | null>(null);
+interface PricingFormHandle {
+  costStr: string;
+  salePriceStr: string;
+  marginPctStr: string;
+  minMarginPctStr: string;
+  reason: string;
+  setReason(v: string): void;
+  setMinMarginPctStr(v: string): void;
+  onChangeCost(v: string): void;
+  onChangePrice(v: string): void;
+  onChangeMargin(v: string): void;
+  hydrate(p: {
+    costPrice: string;
+    salePrice: string;
+    marginPct: string;
+    minMarginPct: string;
+  }): void;
+  isDirty(): boolean;
+  buildPayload(): Record<string, string>;
+}
+
+function usePricingForm(): PricingFormHandle {
   const [costStr, setCostStr] = React.useState('0');
   const [salePriceStr, setSalePriceStr] = React.useState('0');
   const [marginPctStr, setMarginPctStr] = React.useState('0');
   const [minMarginPctStr, setMinMarginPctStr] = React.useState('0');
   const [reason, setReason] = React.useState('');
 
-  const pricingQ = useQuery<PricingView>({
-    queryKey: ['pricing', props.productId],
-    queryFn: async () => (await api.get(`/products/${props.productId}/pricing`)).data,
-  });
-  const historyQ = useQuery<PricingHistoryEntry[]>({
-    queryKey: ['pricing-history', props.productId],
-    queryFn: async () => (await api.get(`/products/${props.productId}/pricing/history`)).data,
-  });
-
-  // Hidrata el form al cargar el producto.
-  React.useEffect(() => {
-    if (pricingQ.data) {
-      setCostStr(pricingQ.data.costPrice);
-      setSalePriceStr(pricingQ.data.salePrice);
-      setMarginPctStr(pricingQ.data.marginPct);
-      setMinMarginPctStr(pricingQ.data.minMarginPct);
-    }
-  }, [pricingQ.data]);
-
   const cost = parseNum(costStr);
   const margin = parseNum(marginPctStr);
-  const minMargin = parseNum(minMarginPctStr);
-  const outOfMargin = minMargin > 0 && margin < minMargin;
 
   function onChangeCost(v: string) {
     setCostStr(v);
     const c = parseNum(v);
-    // Si hay margen vigente y costo > 0: recalcula precio. Si no, deja precio.
     if (c > 0 && margin > 0 && margin < 1) {
       setSalePriceStr(fmt4(clientPriceFromMargin(c, margin)));
     }
@@ -660,22 +671,107 @@ function PricingTab(props: { productId: string; onClose(): void }): JSX.Element 
     setSalePriceStr(fmt4(clientPriceFromMargin(cost, m)));
   }
 
+  function hydrate(p: {
+    costPrice: string;
+    salePrice: string;
+    marginPct: string;
+    minMarginPct: string;
+  }) {
+    setCostStr(p.costPrice);
+    setSalePriceStr(p.salePrice);
+    setMarginPctStr(p.marginPct);
+    setMinMarginPctStr(p.minMarginPct);
+  }
+
+  function isDirty(): boolean {
+    // En modo creación, sirve para decidir si vale la pena llamar a PATCH
+    // /products/:id/pricing tras el POST. Si el usuario no tocó nada de
+    // precios queda como '0' por defecto y omitimos el PATCH.
+    return (
+      costStr !== '0' ||
+      salePriceStr !== '0' ||
+      marginPctStr !== '0' ||
+      minMarginPctStr !== '0' ||
+      reason.trim().length > 0
+    );
+  }
+
+  function buildPayload(): Record<string, string> {
+    const payload: Record<string, string> = {
+      costPrice: costStr,
+      salePrice: salePriceStr,
+      marginPct: marginPctStr,
+      minMarginPct: minMarginPctStr,
+    };
+    if (reason.trim()) payload.reason = reason.trim();
+    return payload;
+  }
+
+  return {
+    costStr,
+    salePriceStr,
+    marginPctStr,
+    minMarginPctStr,
+    reason,
+    setReason,
+    setMinMarginPctStr,
+    onChangeCost,
+    onChangePrice,
+    onChangeMargin,
+    hydrate,
+    isDirty,
+    buildPayload,
+  };
+}
+
+function PricingTab(props: {
+  mode: 'create' | 'edit';
+  productId: string | null;
+  form: PricingFormHandle;
+  onClose(): void;
+}): JSX.Element {
+  const { form } = props;
+  const qc = useQueryClient();
+  const [serverError, setServerError] = React.useState<string | null>(null);
+  const isEdit = props.mode === 'edit' && props.productId !== null;
+
+  // Fetch del pricing existente y del historial: SOLO en edición. En creación
+  // no hay productId todavía; cualquier GET acá tiraría 404 y la pestaña
+  // mostraría error (el bug que motivó este PR).
+  const pricingQ = useQuery<PricingView>({
+    queryKey: ['pricing', props.productId],
+    queryFn: async () => (await api.get(`/products/${props.productId}/pricing`)).data,
+    enabled: isEdit,
+  });
+  const historyQ = useQuery<PricingHistoryEntry[]>({
+    queryKey: ['pricing-history', props.productId],
+    queryFn: async () => (await api.get(`/products/${props.productId}/pricing/history`)).data,
+    enabled: isEdit,
+  });
+
+  // Hidrata el form solo cuando el server devuelve datos (no en creación).
+  // Intencionalmente NO incluimos `form.hydrate` como dep: su identidad
+  // cambia en cada render (closure sobre setState) y reejectaría el efecto
+  // pisando lo que esté escribiendo el usuario.
+  React.useEffect(() => {
+    if (isEdit && pricingQ.data) {
+      form.hydrate(pricingQ.data);
+    }
+  }, [isEdit, pricingQ.data]);
+
+  const margin = parseNum(form.marginPctStr);
+  const minMargin = parseNum(form.minMarginPctStr);
+  const outOfMargin = minMargin > 0 && margin < minMargin;
+
   const mutation = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, string> = {
-        costPrice: costStr,
-        salePrice: salePriceStr,
-        marginPct: marginPctStr,
-        minMarginPct: minMarginPctStr,
-      };
-      if (reason.trim()) payload.reason = reason.trim();
-      return (await api.patch(`/products/${props.productId}/pricing`, payload)).data;
+      return (await api.patch(`/products/${props.productId}/pricing`, form.buildPayload())).data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pricing', props.productId] });
       qc.invalidateQueries({ queryKey: ['pricing-history', props.productId] });
       qc.invalidateQueries({ queryKey: ['products'] });
-      setReason('');
+      form.setReason('');
       setServerError(null);
     },
     onError: (err: unknown) => {
@@ -688,67 +784,74 @@ function PricingTab(props: { productId: string; onClose(): void }): JSX.Element 
     },
   });
 
-  if (pricingQ.isLoading) {
+  if (isEdit && pricingQ.isLoading) {
     return <p className="text-sm text-muted-foreground">Cargando precios…</p>;
   }
-  if (pricingQ.error || !pricingQ.data) {
+  if (isEdit && (pricingQ.error || !pricingQ.data)) {
     return <p className="text-sm text-destructive">No se pudieron cargar los precios.</p>;
   }
+
+  // En creación, todavía no sabemos la moneda del producto (se asigna
+  // server-side al hacer POST). Mostramos las etiquetas sin sufijo de moneda.
+  const currency = isEdit && pricingQ.data ? pricingQ.data.priceCurrency : '';
+  const currencyLabel = currency ? ` (${currency})` : '';
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-xs text-muted-foreground">
-        El margen se calcula sobre el precio de venta. Cambia cualquier campo y los demás se
-        recalculan en vivo. El costo se guarda manualmente por ahora; en una próxima entrega lo
-        derivaremos del kardex de compras (promedio ponderado).
+        {isEdit
+          ? 'El margen se calcula sobre el precio de venta. Cambia cualquier campo y los demás se recalculan en vivo. El costo se guarda manualmente por ahora; en una próxima entrega lo derivaremos del kardex de compras (promedio ponderado).'
+          : 'Define costo, margen, precio y margen mínimo para el nuevo producto. Se guardarán automáticamente cuando confirmes el producto desde la pestaña General. El recálculo es bidireccional: editás un campo y los otros se ajustan.'}
       </p>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Field label={`Costo (${pricingQ.data.priceCurrency})`} htmlFor="pricing-cost">
+        <Field label={`Costo${currencyLabel}`} htmlFor="pricing-cost">
           <Input
             id="pricing-cost"
             inputMode="decimal"
-            value={costStr}
-            onChange={(e) => onChangeCost(e.target.value)}
+            value={form.costStr}
+            onChange={(e) => form.onChangeCost(e.target.value)}
           />
         </Field>
         <Field label="Margen %" htmlFor="pricing-margin">
           <Input
             id="pricing-margin"
             inputMode="decimal"
-            value={marginPctStr}
-            onChange={(e) => onChangeMargin(e.target.value)}
+            value={form.marginPctStr}
+            onChange={(e) => form.onChangeMargin(e.target.value)}
             aria-describedby="pricing-margin-hint"
           />
           <span id="pricing-margin-hint" className="text-xs text-muted-foreground">
             Fracción (0.30 = 30 %)
           </span>
         </Field>
-        <Field label={`Precio venta (${pricingQ.data.priceCurrency})`} htmlFor="pricing-price">
+        <Field label={`Precio venta${currencyLabel}`} htmlFor="pricing-price">
           <Input
             id="pricing-price"
             inputMode="decimal"
-            value={salePriceStr}
-            onChange={(e) => onChangePrice(e.target.value)}
+            value={form.salePriceStr}
+            onChange={(e) => form.onChangePrice(e.target.value)}
           />
         </Field>
         <Field label="Margen mínimo %" htmlFor="pricing-min-margin">
           <Input
             id="pricing-min-margin"
             inputMode="decimal"
-            value={minMarginPctStr}
-            onChange={(e) => setMinMarginPctStr(e.target.value)}
+            value={form.minMarginPctStr}
+            onChange={(e) => form.setMinMarginPctStr(e.target.value)}
           />
         </Field>
-        <Field label="Motivo del cambio (opcional)" htmlFor="pricing-reason" fullWidth>
-          <Input
-            id="pricing-reason"
-            maxLength={250}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Ej.: ajuste por nueva lista de proveedor"
-          />
-        </Field>
+        {isEdit && (
+          <Field label="Motivo del cambio (opcional)" htmlFor="pricing-reason" fullWidth>
+            <Input
+              id="pricing-reason"
+              maxLength={250}
+              value={form.reason}
+              onChange={(e) => form.setReason(e.target.value)}
+              placeholder="Ej.: ajuste por nueva lista de proveedor"
+            />
+          </Field>
+        )}
       </div>
 
       {outOfMargin && (
@@ -768,52 +871,56 @@ function PricingTab(props: { productId: string; onClose(): void }): JSX.Element 
         </div>
       )}
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={props.onClose}>
-          Cerrar
-        </Button>
-        <Button type="button" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-          {mutation.isPending ? 'Guardando…' : 'Guardar precios'}
-        </Button>
-      </div>
+      {isEdit && (
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={props.onClose}>
+            Cerrar
+          </Button>
+          <Button type="button" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+            {mutation.isPending ? 'Guardando…' : 'Guardar precios'}
+          </Button>
+        </div>
+      )}
 
-      <div className="mt-2">
-        <h4 className="mb-2 text-sm font-semibold">Historial de cambios</h4>
-        {historyQ.isLoading && <p className="text-xs text-muted-foreground">Cargando…</p>}
-        {historyQ.data && historyQ.data.length === 0 && (
-          <p className="text-xs text-muted-foreground">Sin movimientos registrados.</p>
-        )}
-        {historyQ.data && historyQ.data.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b text-left uppercase text-muted-foreground">
-                  <th className="py-1 pr-3 font-medium">Fecha</th>
-                  <th className="py-1 pr-3 font-medium">Usuario</th>
-                  <th className="py-1 pr-3 font-medium">Costo</th>
-                  <th className="py-1 pr-3 font-medium">Margen</th>
-                  <th className="py-1 pr-3 font-medium">Precio</th>
-                  <th className="py-1 pr-3 font-medium">Motivo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historyQ.data.map((h) => (
-                  <tr key={h.id} className="border-b last:border-b-0">
-                    <td className="py-1 pr-3 whitespace-nowrap">
-                      {new Date(h.changedAt).toLocaleString()}
-                    </td>
-                    <td className="py-1 pr-3">{h.changedByName ?? '—'}</td>
-                    <td className="py-1 pr-3">{h.costValue ?? '—'}</td>
-                    <td className="py-1 pr-3">{h.marginPct ?? '—'}</td>
-                    <td className="py-1 pr-3">{h.newValue}</td>
-                    <td className="py-1 pr-3">{h.reason ?? '—'}</td>
+      {isEdit && (
+        <div className="mt-2">
+          <h4 className="mb-2 text-sm font-semibold">Historial de cambios</h4>
+          {historyQ.isLoading && <p className="text-xs text-muted-foreground">Cargando…</p>}
+          {historyQ.data && historyQ.data.length === 0 && (
+            <p className="text-xs text-muted-foreground">Sin movimientos registrados.</p>
+          )}
+          {historyQ.data && historyQ.data.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b text-left uppercase text-muted-foreground">
+                    <th className="py-1 pr-3 font-medium">Fecha</th>
+                    <th className="py-1 pr-3 font-medium">Usuario</th>
+                    <th className="py-1 pr-3 font-medium">Costo</th>
+                    <th className="py-1 pr-3 font-medium">Margen</th>
+                    <th className="py-1 pr-3 font-medium">Precio</th>
+                    <th className="py-1 pr-3 font-medium">Motivo</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </thead>
+                <tbody>
+                  {historyQ.data.map((h) => (
+                    <tr key={h.id} className="border-b last:border-b-0">
+                      <td className="py-1 pr-3 whitespace-nowrap">
+                        {new Date(h.changedAt).toLocaleString()}
+                      </td>
+                      <td className="py-1 pr-3">{h.changedByName ?? '—'}</td>
+                      <td className="py-1 pr-3">{h.costValue ?? '—'}</td>
+                      <td className="py-1 pr-3">{h.marginPct ?? '—'}</td>
+                      <td className="py-1 pr-3">{h.newValue}</td>
+                      <td className="py-1 pr-3">{h.reason ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
