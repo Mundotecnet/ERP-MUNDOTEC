@@ -236,17 +236,37 @@ describe('ProductsPage — pestaña Precios 3 niveles (HU-11.2)', () => {
     expect((document.getElementById('pricing-margin-2') as HTMLInputElement).value).toBe('66.67');
   });
 
-  it('editar margen en entero recalcula precio. 30 → fracción 0.3 → price=142.8571', async () => {
+  it('editar margen en entero recalcula precio redondeado a 2 dec. 30 → price=142.86', async () => {
     const user = await openPricingTab();
 
     const margin0 = document.getElementById('pricing-margin-0') as HTMLInputElement;
     await user.clear(margin0);
     await user.type(margin0, '30');
-    // cost=100, margin=0.3 → price=142.8571.
+    // cost=100, margin=0.3 → price=142.8571 → redondeado a 142.86 (PR-35).
     await waitFor(() =>
-      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe(
-        '142.8571',
-      ),
+      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('142.86'),
+    );
+  });
+
+  it('editar precio recalcula margen efectivo del precio redondeado (PR-35)', async () => {
+    const user = await openPricingTab();
+
+    // cost=100 (del fixture), tipear price=142.86 (ya redondeado) →
+    // margen efectivo = (142.86 - 100) / 142.86 = 0.29997 → entero "30".
+    const price0 = document.getElementById('pricing-price-0') as HTMLInputElement;
+    await user.clear(price0);
+    await user.type(price0, '142.86');
+    await waitFor(() =>
+      expect((document.getElementById('pricing-margin-0') as HTMLInputElement).value).toBe('30'),
+    );
+
+    // Si el usuario tipeara precio con más decimales (142.8571), el cliente
+    // lo redondea defensivamente para calcular el margen efectivo del precio
+    // que va a quedar guardado.
+    await user.clear(price0);
+    await user.type(price0, '142.8571');
+    await waitFor(() =>
+      expect((document.getElementById('pricing-margin-0') as HTMLInputElement).value).toBe('30'),
     );
   });
 
@@ -307,7 +327,8 @@ describe('ProductsPage — pestaña Precios en modo creación', () => {
     expect(screen.getByTestId('pricing-level-row-0')).toBeInTheDocument();
     expect(screen.getByTestId('pricing-level-row-2')).toBeInTheDocument();
 
-    // Recálculo local: cost=200, margen P1=25 (entero) → precio=266.6667.
+    // Recálculo local: cost=200, margen P1=25 (entero) → precio=266.6667
+    // → redondeado a 266.67 (PR-35).
     const cost = document.getElementById('pricing-cost') as HTMLInputElement;
     await user.clear(cost);
     await user.type(cost, '200');
@@ -315,9 +336,7 @@ describe('ProductsPage — pestaña Precios en modo creación', () => {
     await user.clear(margin0);
     await user.type(margin0, '25');
     await waitFor(() =>
-      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe(
-        '266.6667',
-      ),
+      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('266.67'),
     );
   });
 
@@ -364,9 +383,7 @@ describe('ProductsPage — pestaña Precios en modo creación', () => {
     await user.clear(margin0);
     await user.type(margin0, '30');
     await waitFor(() =>
-      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe(
-        '214.2857',
-      ),
+      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('214.29'),
     );
 
     // Completa General + guardar.
@@ -382,11 +399,12 @@ describe('ProductsPage — pestaña Precios en modo creación', () => {
 
     const [patchUrl, patchBody] = vi.mocked(api.patch).mock.calls[0];
     expect(patchUrl).toBe('/products/99/pricing');
+    // PR-35: el precio P1 va redondeado a 214.29 (no 214.2857).
     expect(patchBody).toMatchObject({
       costPrice: '150',
       minMarginPct: '0',
       levels: [
-        { priceListId: '11', salePrice: '214.2857', marginPct: '0.3' },
+        { priceListId: '11', salePrice: '214.29', marginPct: '0.3' },
         { priceListId: '12', salePrice: '0', marginPct: '0' },
         { priceListId: '13', salePrice: '0', marginPct: '0' },
       ],
