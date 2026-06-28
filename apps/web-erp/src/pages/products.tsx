@@ -626,12 +626,22 @@ function parseNum(s: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function fmt4(n: number): string {
+// PR-35: redondeo del precio de venta a 2 decimales (estándar contable
+// USD/CRC). El costo y el margen mantienen precisión completa internamente.
+// Mantenemos el helper alineado con pricing.formula.ts del backend.
+const PRICE_DECIMALS = 2;
+function roundPriceNum(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  const f = 10 ** PRICE_DECIMALS;
+  return Math.round(n * f) / f;
+}
+function fmtPrice(n: number): string {
   if (!Number.isFinite(n)) return '';
-  return n
-    .toFixed(4)
-    .replace(/\.?0+$/, '')
-    .replace(/^$/, '0');
+  // Redondea a PRICE_DECIMALS y devuelve sin ceros sobrantes ("100", "142.86").
+  const r = roundPriceNum(n);
+  const fixed = r.toFixed(PRICE_DECIMALS);
+  const stripped = fixed.replace(/\.?0+$/, '');
+  return stripped === '' || stripped === '-' ? '0' : stripped;
 }
 
 // "30" (entero %) → "0.3" (fracción). Soporta decimales en el entero.
@@ -656,13 +666,18 @@ function fracToIntPct(frac: number | string): string {
 }
 
 // Cliente: mismas fórmulas que el backend (pricing.formula.ts).
+// `clientPriceFromMargin` devuelve el precio YA redondeado a PRICE_DECIMALS
+// para coincidir con lo que el server va a guardar.
 function clientPriceFromMargin(cost: number, margin: number): number {
   if (!(cost > 0) || margin >= 1 || margin < 0) return 0;
-  return cost / (1 - margin);
+  return roundPriceNum(cost / (1 - margin));
 }
+// `clientMarginFromPrice` redondea defensivamente el precio entrante para
+// calcular el margen efectivo del valor que va a quedar guardado.
 function clientMarginFromPrice(cost: number, price: number): number {
-  if (!(price > 0) || price < cost) return 0;
-  const raw = (price - cost) / price;
+  const p = roundPriceNum(price);
+  if (!(p > 0) || p < cost) return 0;
+  const raw = (p - cost) / p;
   return raw >= 0.9999 ? 0.9999 : raw;
 }
 
@@ -716,7 +731,7 @@ function usePricingForm(): PricingFormHandle {
       prev.map((l) => {
         const m = parseNum(intPctToFrac(l.marginIntStr));
         if (c > 0 && m > 0 && m < 1) {
-          return { ...l, salePriceStr: fmt4(clientPriceFromMargin(c, m)) };
+          return { ...l, salePriceStr: fmtPrice(clientPriceFromMargin(c, m)) };
         }
         return l;
       }),
@@ -742,7 +757,7 @@ function usePricingForm(): PricingFormHandle {
         if (i !== idx) return l;
         const m = parseNum(intPctToFrac(v));
         const newPrice = clientPriceFromMargin(c, m);
-        return { ...l, salePriceStr: fmt4(newPrice), marginIntStr: v };
+        return { ...l, salePriceStr: fmtPrice(newPrice), marginIntStr: v };
       }),
     );
   }

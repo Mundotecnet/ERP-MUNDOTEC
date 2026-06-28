@@ -8,8 +8,7 @@ import {
   isOutOfMargin,
   marginFromPrice,
   priceFromMargin,
-  MARGIN_SCALE,
-  PRICE_SCALE,
+  roundPrice,
 } from './pricing.formula';
 
 // HU-11.2 / PR-34 — Precios con 3 niveles fijos.
@@ -332,6 +331,9 @@ export class PricingService {
         newMargin: Prisma.Decimal;
         changed: boolean;
       };
+      // PR-35: el precio de venta SIEMPRE se redondea a PRICE_SCALE (2 dec).
+      // El margen guardado es el efectivo del precio redondeado — garantiza
+      // que (cost, margin, price) siempre cuadren tras el round.
       const resolved: Resolved[] = items.map((it) => {
         const lvl = updatesByListId.get(it.priceList.id.toString());
         const oldSale = it.price;
@@ -340,37 +342,45 @@ export class PricingService {
         let newMargin: Prisma.Decimal;
 
         if (lvl && lvl.salePrice !== undefined && lvl.marginPct !== undefined) {
-          const s = new Prisma.Decimal(lvl.salePrice);
-          const m = new Prisma.Decimal(lvl.marginPct);
-          if (!isConsistent(newCost, s, m)) {
+          const sIn = new Prisma.Decimal(lvl.salePrice);
+          const mIn = new Prisma.Decimal(lvl.marginPct);
+          if (!isConsistent(newCost, sIn, mIn)) {
             throw new BadRequestException(
-              `${it.priceList.name}: salePrice y marginPct no son consistentes con el costo (tolerancia 0.0001).`,
+              `${it.priceList.name}: salePrice y marginPct no son consistentes con el costo tras el redondeo del precio a 2 decimales.`,
             );
           }
-          newSale = s.toDecimalPlaces(PRICE_SCALE);
-          newMargin = m.toDecimalPlaces(MARGIN_SCALE);
-        } else if (lvl && lvl.salePrice !== undefined) {
-          const s = new Prisma.Decimal(lvl.salePrice).toDecimalPlaces(PRICE_SCALE);
-          newSale = s;
+          newSale = roundPrice(sIn);
+          // Aún cuando el cliente envía el margen "intencional", guardamos
+          // el efectivo del precio redondeado para mantener el invariante.
           try {
-            newMargin = marginFromPrice(newCost, s);
+            newMargin = marginFromPrice(newCost, newSale);
+          } catch (err) {
+            throw new BadRequestException(`${it.priceList.name}: ${(err as Error).message}`);
+          }
+        } else if (lvl && lvl.salePrice !== undefined) {
+          newSale = roundPrice(new Prisma.Decimal(lvl.salePrice));
+          try {
+            newMargin = marginFromPrice(newCost, newSale);
           } catch (err) {
             throw new BadRequestException(`${it.priceList.name}: ${(err as Error).message}`);
           }
         } else if (lvl && lvl.marginPct !== undefined) {
-          const m = new Prisma.Decimal(lvl.marginPct).toDecimalPlaces(MARGIN_SCALE);
-          newMargin = m;
+          const m = new Prisma.Decimal(lvl.marginPct);
           try {
+            // priceFromMargin ya redondea a PRICE_SCALE.
             newSale = priceFromMargin(newCost, m);
+            // Margen efectivo del precio redondeado (no el intencional).
+            newMargin = marginFromPrice(newCost, newSale);
           } catch (err) {
             throw new BadRequestException(`${it.priceList.name}: ${(err as Error).message}`);
           }
         } else if (costChanged && oldMargin.gt(0)) {
-          // Costo cambió sin que el usuario tocara este nivel: mantener
-          // margen vigente y recalcular precio.
-          newMargin = oldMargin;
+          // Costo cambió sin tocar este nivel: mantener intención del margen
+          // vigente y recalcular precio (redondeado). Margen guardado es el
+          // efectivo del precio redondeado.
           try {
             newSale = priceFromMargin(newCost, oldMargin);
+            newMargin = marginFromPrice(newCost, newSale);
           } catch (err) {
             throw new BadRequestException(`${it.priceList.name}: ${(err as Error).message}`);
           }
