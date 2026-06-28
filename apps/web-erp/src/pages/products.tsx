@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api';
 
@@ -898,11 +899,10 @@ function PricingTab(props: {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Field label={`Costo${currencyLabel}`} htmlFor="pricing-cost">
-          <Input
+          <MoneyInput
             id="pricing-cost"
-            inputMode="decimal"
             value={form.costStr}
-            onChange={(e) => form.onChangeCost(e.target.value)}
+            onChange={(v) => form.onChangeCost(v)}
           />
         </Field>
         <Field label="Margen mínimo %" htmlFor="pricing-min-margin">
@@ -955,11 +955,10 @@ function PricingTab(props: {
                     />
                   </td>
                   <td className="py-2 pr-4">
-                    <Input
+                    <MoneyInput
                       id={`pricing-price-${i}`}
-                      inputMode="decimal"
                       value={lvl.salePriceStr}
-                      onChange={(e) => form.onChangeLevelPrice(i, e.target.value)}
+                      onChange={(v) => form.onChangeLevelPrice(i, v)}
                       className="max-w-40"
                     />
                   </td>
