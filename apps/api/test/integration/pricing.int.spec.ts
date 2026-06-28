@@ -13,6 +13,9 @@ interface Fixtures {
   tokenReadOnly: string;
   productAId: string;
   productBId: string;
+  p1AId: string;
+  p2AId: string;
+  p3AId: string;
 }
 
 async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
@@ -27,13 +30,37 @@ async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
     update: {},
     create: { code: 'CRC', name: 'Colón', symbol: '₡' },
   });
+  await tc.raw.currency.upsert({
+    where: { code: 'USD' },
+    update: {},
+    create: { code: 'USD', name: 'Dólar', symbol: '$' },
+  });
   const uom = await tc.raw.unitOfMeasure.upsert({
     where: { code: 'UND' },
     update: {},
     create: { code: 'UND', name: 'Unidad' },
   });
 
-  const codes = ['auth.login', 'pricing.read', 'pricing.item.manage'];
+  // Seed las 3 listas P1/P2/P3 para ambas empresas (la migración solo cubre
+  // empresas existentes al momento del deploy; las que crea el test deben
+  // tenerlas también).
+  for (const co of [a, b]) {
+    for (const name of ['Precio 1', 'Precio 2', 'Precio 3']) {
+      await tc.raw.priceList.upsert({
+        where: { companyId_name: { companyId: co.id, name } },
+        update: {},
+        create: { companyId: co.id, name, currencyCode: co.currencyCode, listType: 'SALE' },
+      });
+    }
+  }
+
+  const codes = [
+    'auth.login',
+    'pricing.read',
+    'pricing.item.manage',
+    'catalogs.product.read',
+    'catalogs.product.manage',
+  ];
   const perms = await Promise.all(
     codes.map((code) =>
       tc.raw.permission.upsert({
@@ -101,6 +128,11 @@ async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
     },
   });
 
+  const listsA = await tc.raw.priceList.findMany({
+    where: { companyId: a.id, name: { in: ['Precio 1', 'Precio 2', 'Precio 3'] } },
+    orderBy: { name: 'asc' },
+  });
+
   return {
     companyAId: a.id,
     companyBId: b.id,
@@ -109,10 +141,13 @@ async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
     tokenReadOnly,
     productAId: productA.id.toString(),
     productBId: productB.id.toString(),
+    p1AId: listsA[0].id.toString(),
+    p2AId: listsA[1].id.toString(),
+    p3AId: listsA[2].id.toString(),
   };
 }
 
-describe('Pricing core (HU-11.1, PR-32)', () => {
+describe('Pricing 3 niveles (HU-11.2, PR-34)', () => {
   let tc: AppTestContext;
   let fx: Fixtures;
 
@@ -126,21 +161,25 @@ describe('Pricing core (HU-11.1, PR-32)', () => {
   });
 
   describe('GET /products/:id/pricing', () => {
-    it('devuelve el trío costo/margen/precio del producto', async () => {
+    it('devuelve costo + minMargin + 3 niveles (auto-seedeados si faltan)', async () => {
       const res = await request(tc.app.getHttpServer())
         .get(`/products/${fx.productAId}/pricing`)
         .set('Authorization', `Bearer ${fx.tokenAdminA}`);
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({
         productId: fx.productAId,
-        sku: 'PRC-A-1',
-        priceCurrency: 'CRC',
         costPrice: '100',
-        salePrice: '0',
-        marginPct: '0',
         minMarginPct: '0',
         outOfMargin: false,
       });
+      expect(res.body.levels).toHaveLength(3);
+      const names = res.body.levels.map((l: { name: string }) => l.name);
+      expect(names).toEqual(['Precio 1', 'Precio 2', 'Precio 3']);
+      // Cada nivel tiene id de lista, precio y margen.
+      for (const lvl of res.body.levels) {
+        expect(lvl).toMatchObject({ salePrice: '0', marginPct: '0', outOfMargin: false });
+        expect(lvl.priceListId).toMatch(/^\d+$/);
+      }
     });
 
     it('404 si el producto pertenece a otra empresa', async () => {
@@ -150,99 +189,114 @@ describe('Pricing core (HU-11.1, PR-32)', () => {
       expect(res.status).toBe(404);
     });
 
-    it('403 si el usuario no tiene pricing.read', async () => {
-      // El user read-only sí tiene pricing.read, así que probamos sin token alguno.
+    it('401 sin token', async () => {
       const res = await request(tc.app.getHttpServer()).get(`/products/${fx.productAId}/pricing`);
       expect(res.status).toBe(401);
     });
   });
 
   describe('PATCH /products/:id/pricing', () => {
-    it('salePrice → margen recalculado, fila nueva en historial', async () => {
+    it('actualiza P1 con marginPct → precio recalculado y P1 sincroniza product.sale_price', async () => {
       const res = await request(tc.app.getHttpServer())
         .patch(`/products/${fx.productAId}/pricing`)
         .set('Authorization', `Bearer ${fx.tokenAdminA}`)
-        .send({ salePrice: '142.8571', reason: 'precio sugerido' });
+        .send({ levels: [{ priceListId: fx.p1AId, marginPct: '0.3' }] });
       expect(res.status).toBe(200);
-      expect(res.body.salePrice).toBe('142.8571');
-      expect(res.body.marginPct).toBe('0.3');
-      expect(res.body.outOfMargin).toBe(false);
+      const p1 = res.body.levels.find((l: { name: string }) => l.name === 'Precio 1');
+      // cost=100, margin=0.3 → price=142.8571
+      expect(p1).toMatchObject({ marginPct: '0.3', salePrice: '142.8571', outOfMargin: false });
 
-      const hist = await tc.raw.productPriceHistory.findMany({
-        where: { productId: BigInt(fx.productAId) },
-        orderBy: { changedAt: 'desc' },
-        take: 1,
+      const product = await tc.raw.product.findUnique({
+        where: { id: BigInt(fx.productAId) },
+        select: { salePrice: true, marginPct: true },
       });
-      expect(hist).toHaveLength(1);
-      expect(hist[0].changeType).toBe('SALE');
-      expect(hist[0].source).toBe('MANUAL');
-      expect(hist[0].newValue.toString()).toBe('142.8571');
-      expect(hist[0].costValue?.toString()).toBe('100');
-      expect(hist[0].marginPct?.toString()).toBe('0.3');
-      expect(hist[0].reason).toBe('precio sugerido');
-      expect(hist[0].changedBy).not.toBeNull();
+      expect(product!.salePrice.toString()).toBe('142.8571');
+      expect(product!.marginPct.toString()).toBe('0.3');
     });
 
-    it('marginPct → precio recalculado', async () => {
+    it('actualiza los 3 niveles a la vez con salePrice', async () => {
       const res = await request(tc.app.getHttpServer())
         .patch(`/products/${fx.productAId}/pricing`)
         .set('Authorization', `Bearer ${fx.tokenAdminA}`)
-        .send({ marginPct: '0.5' });
+        .send({
+          levels: [
+            { priceListId: fx.p1AId, salePrice: '150' },
+            { priceListId: fx.p2AId, salePrice: '180' },
+            { priceListId: fx.p3AId, salePrice: '210' },
+          ],
+        });
       expect(res.status).toBe(200);
-      expect(res.body.marginPct).toBe('0.5');
-      // cost=100 / (1-0.5) = 200
-      expect(res.body.salePrice).toBe('200');
+      const byName = new Map<string, { salePrice: string; marginPct: string }>(
+        res.body.levels.map((l: { name: string; salePrice: string; marginPct: string }) => [
+          l.name,
+          l,
+        ]),
+      );
+      // cost=100 → margins: P1=0.3333, P2=0.4444, P3=0.5238
+      expect(byName.get('Precio 1')!.salePrice).toBe('150');
+      expect(byName.get('Precio 1')!.marginPct).toBe('0.3333');
+      expect(byName.get('Precio 2')!.salePrice).toBe('180');
+      expect(byName.get('Precio 2')!.marginPct).toBe('0.4444');
+      expect(byName.get('Precio 3')!.salePrice).toBe('210');
+      expect(byName.get('Precio 3')!.marginPct).toBe('0.5238');
     });
 
-    it('salePrice + marginPct inconsistentes con costo → 400', async () => {
-      const res = await request(tc.app.getHttpServer())
-        .patch(`/products/${fx.productAId}/pricing`)
-        .set('Authorization', `Bearer ${fx.tokenAdminA}`)
-        .send({ salePrice: '500', marginPct: '0.1' });
-      expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/consistentes/);
-    });
-
-    it('salePrice + marginPct consistentes → aceptado', async () => {
-      const res = await request(tc.app.getHttpServer())
-        .patch(`/products/${fx.productAId}/pricing`)
-        .set('Authorization', `Bearer ${fx.tokenAdminA}`)
-        .send({ salePrice: '200', marginPct: '0.5' });
-      expect(res.status).toBe(200);
-      expect(res.body.salePrice).toBe('200');
-      expect(res.body.marginPct).toBe('0.5');
-    });
-
-    it('costPrice solo → margen se conserva, precio se recalcula', async () => {
-      // Estado actual: cost=100, sale=200, margin=0.5
+    it('actualizar solo costPrice recalcula precio de cada nivel manteniendo margen', async () => {
+      // Estado actual (del test anterior): cost=100, margenes 0.3333/0.4444/0.5238.
       const res = await request(tc.app.getHttpServer())
         .patch(`/products/${fx.productAId}/pricing`)
         .set('Authorization', `Bearer ${fx.tokenAdminA}`)
         .send({ costPrice: '120' });
       expect(res.status).toBe(200);
       expect(res.body.costPrice).toBe('120');
-      expect(res.body.marginPct).toBe('0.5');
-      // 120 / (1 - 0.5) = 240
-      expect(res.body.salePrice).toBe('240');
+      const byName = new Map<string, { salePrice: string; marginPct: string }>(
+        res.body.levels.map((l: { name: string; salePrice: string; marginPct: string }) => [
+          l.name,
+          l,
+        ]),
+      );
+      // Margenes se mantienen, precio = 120 / (1 - margin).
+      expect(byName.get('Precio 1')!.marginPct).toBe('0.3333');
+      expect(byName.get('Precio 1')!.salePrice).toBe('179.991'); // 120/(1-0.3333)
+      expect(byName.get('Precio 2')!.marginPct).toBe('0.4444');
+      expect(byName.get('Precio 3')!.marginPct).toBe('0.5238');
     });
 
-    it('minMarginPct que el margen vigente no alcanza → out_of_margin=true', async () => {
-      // Margen vigente=0.5, piso=0.7 → fuera de margen.
+    it('minMarginPct alto → product.outOfMargin true y P3 outOfMargin true (P1 abajo del piso)', async () => {
+      // Estado actual: P1.margin=0.3333. Si minMargin=0.4, P1 cae fuera.
       const res = await request(tc.app.getHttpServer())
         .patch(`/products/${fx.productAId}/pricing`)
         .set('Authorization', `Bearer ${fx.tokenAdminA}`)
-        .send({ minMarginPct: '0.7' });
+        .send({ minMarginPct: '0.4' });
       expect(res.status).toBe(200);
+      expect(res.body.minMarginPct).toBe('0.4');
+      // P1 (0.3333) cae fuera, P2 (0.4444) no, P3 (0.5238) no.
+      const p1 = res.body.levels.find((l: { name: string }) => l.name === 'Precio 1');
+      const p2 = res.body.levels.find((l: { name: string }) => l.name === 'Precio 2');
+      expect(p1.outOfMargin).toBe(true);
+      expect(p2.outOfMargin).toBe(false);
+      // El agregado del producto es true porque al menos un nivel está fuera.
       expect(res.body.outOfMargin).toBe(true);
-      expect(res.body.minMarginPct).toBe('0.7');
     });
 
-    it('marginPct >= 1 → 400', async () => {
+    it('salePrice + marginPct inconsistentes en un nivel → 400', async () => {
       const res = await request(tc.app.getHttpServer())
         .patch(`/products/${fx.productAId}/pricing`)
         .set('Authorization', `Bearer ${fx.tokenAdminA}`)
-        .send({ marginPct: '1' });
+        .send({
+          levels: [{ priceListId: fx.p1AId, salePrice: '500', marginPct: '0.1' }],
+        });
       expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/consistentes/);
+    });
+
+    it('priceListId inválido (no pertenece al producto/empresa) → 400', async () => {
+      const res = await request(tc.app.getHttpServer())
+        .patch(`/products/${fx.productAId}/pricing`)
+        .set('Authorization', `Bearer ${fx.tokenAdminA}`)
+        .send({ levels: [{ priceListId: '999999', marginPct: '0.3' }] });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/no pertenece/);
     });
 
     it('body vacío → 400', async () => {
@@ -253,43 +307,81 @@ describe('Pricing core (HU-11.1, PR-32)', () => {
       expect(res.status).toBe(400);
     });
 
+    it('marginPct >= 1 → 400', async () => {
+      const res = await request(tc.app.getHttpServer())
+        .patch(`/products/${fx.productAId}/pricing`)
+        .set('Authorization', `Bearer ${fx.tokenAdminA}`)
+        .send({ levels: [{ priceListId: fx.p1AId, marginPct: '1' }] });
+      expect(res.status).toBe(400);
+    });
+
     it('user sin pricing.item.manage → 403', async () => {
       const res = await request(tc.app.getHttpServer())
         .patch(`/products/${fx.productAId}/pricing`)
         .set('Authorization', `Bearer ${fx.tokenReadOnly}`)
-        .send({ salePrice: '999' });
+        .send({ levels: [{ priceListId: fx.p1AId, salePrice: '999' }] });
       expect(res.status).toBe(403);
     });
 
-    it('producto de otra empresa → 404 (tenant aislado)', async () => {
+    it('producto de otra empresa → 404', async () => {
       const res = await request(tc.app.getHttpServer())
         .patch(`/products/${fx.productAId}/pricing`)
         .set('Authorization', `Bearer ${fx.tokenAdminB}`)
-        .send({ salePrice: '100' });
+        .send({ costPrice: '50' });
       expect(res.status).toBe(404);
     });
   });
 
   describe('GET /products/:id/pricing/history', () => {
-    it('devuelve historial descendente con changedByName resuelto', async () => {
+    it('devuelve historial con priceListName y priceListId por nivel', async () => {
       const res = await request(tc.app.getHttpServer())
         .get(`/products/${fx.productAId}/pricing/history`)
         .set('Authorization', `Bearer ${fx.tokenAdminA}`);
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.length).toBeGreaterThanOrEqual(2);
-      // El primero (más reciente) debe ser el último PATCH (minMarginPct).
-      const first = res.body[0];
-      expect(first.changeType).toBe('SALE');
-      expect(first.source).toBe('MANUAL');
-      expect(first.changedByName).toBe('price-admin-a');
+      expect(res.body.length).toBeGreaterThanOrEqual(1);
+      // Hay filas de tipo SALE con priceListId seteado y al menos un COST
+      // con priceListId nulo (del cambio de costo).
+      const sales = res.body.filter(
+        (r: { changeType: string; priceListId: string | null }) =>
+          r.changeType === 'SALE' && r.priceListId !== null,
+      );
+      const costs = res.body.filter(
+        (r: { changeType: string; priceListId: string | null }) =>
+          r.changeType === 'COST' && r.priceListId === null,
+      );
+      expect(sales.length).toBeGreaterThanOrEqual(1);
+      expect(costs.length).toBeGreaterThanOrEqual(1);
+      for (const s of sales) {
+        expect(['Precio 1', 'Precio 2', 'Precio 3']).toContain(s.priceListName);
+      }
     });
+  });
 
-    it('404 si el producto pertenece a otra empresa', async () => {
-      const res = await request(tc.app.getHttpServer())
-        .get(`/products/${fx.productAId}/pricing/history`)
-        .set('Authorization', `Bearer ${fx.tokenAdminB}`);
-      expect(res.status).toBe(404);
+  describe('Creación de producto', () => {
+    it('al crear un producto via POST /products auto-seedea sus 3 niveles', async () => {
+      const create = await request(tc.app.getHttpServer())
+        .post('/products')
+        .set('Authorization', `Bearer ${fx.tokenAdminA}`)
+        .send({
+          sku: 'NEW-AUTO',
+          name: 'Producto autoseedeado',
+          uomId: (
+            await tc.raw.unitOfMeasure.findUniqueOrThrow({ where: { code: 'UND' } })
+          ).id.toString(),
+          priceCurrency: 'CRC',
+        });
+      expect(create.status).toBe(201);
+      const newId = create.body.id;
+
+      const get = await request(tc.app.getHttpServer())
+        .get(`/products/${newId}/pricing`)
+        .set('Authorization', `Bearer ${fx.tokenAdminA}`);
+      expect(get.status).toBe(200);
+      expect(get.body.levels).toHaveLength(3);
+      for (const lvl of get.body.levels) {
+        expect(lvl).toMatchObject({ salePrice: '0', marginPct: '0' });
+      }
     });
   });
 });

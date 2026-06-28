@@ -1952,5 +1952,36 @@ ALTER TABLE product_price_history
     ADD COLUMN reason      TEXT;
 
 -- ============================================================================
+-- 22. PRECIOS — 3 niveles fijos (PR-34, HU-11.2)
+-- ============================================================================
+-- Pasamos de precio único a 3 niveles fijos por producto, reusando el modelo
+-- canónico `price_list` / `price_list_item`. Por empresa se seedean 3 listas:
+-- "Precio 1", "Precio 2", "Precio 3" (tipo SALE). Por producto se tiene una
+-- fila en `price_list_item` por cada nivel con su propio (margin_pct, price).
+--
+-- COSTO sigue compartido: `product.cost_price` no se repite por nivel.
+-- min_margin_pct sigue siendo uno por producto: `product.min_margin_pct`.
+-- out_of_margin de `product` ahora es agregado: true si CUALQUIER nivel
+-- queda con margen < min. `price_list_item.out_of_margin` guarda el flag
+-- por fila (preparado para el utilitario operativo de req §5).
+--
+-- product.sale_price y product.margin_pct se conservan como denormalización
+-- del nivel "Precio 1" (lista por defecto) para no romper la columna del
+-- listado de productos ni la vista v_web_catalog. Se sincronizan al guardar.
+ALTER TABLE price_list_item
+    ADD COLUMN margin_pct    NUMERIC(7,4) NOT NULL DEFAULT 0,
+    ADD COLUMN out_of_margin BOOLEAN      NOT NULL DEFAULT FALSE;
+
+ALTER TABLE price_list_item
+    ADD CONSTRAINT chk_pli_margin_pct
+        CHECK (margin_pct >= 0 AND margin_pct < 1);
+
+-- El historial gana referencia al nivel afectado. NULL = cambio que no
+-- pertenece a un nivel (p. ej., cambio de costo o de min_margin_pct).
+ALTER TABLE product_price_history
+    ADD COLUMN price_list_id BIGINT REFERENCES price_list(id);
+CREATE INDEX idx_pricehist_pricelist ON product_price_history(price_list_id);
+
+-- ============================================================================
 -- FIN DEL ESQUEMA
 -- ============================================================================
