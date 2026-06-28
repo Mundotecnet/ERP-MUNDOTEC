@@ -436,10 +436,11 @@ model PriceList {
   listType     String   @default("SALE") @map("list_type") @db.VarChar(10)
   isActive     Boolean  @default(true) @map("is_active")
 
-  company      Company           @relation(fields: [companyId], references: [id])
-  currency     Currency          @relation(fields: [currencyCode], references: [code])
-  items        PriceListItem[]
-  priceHistory ProductPriceHistory[]
+  company        Company               @relation(fields: [companyId], references: [id])
+  currency       Currency              @relation(fields: [currencyCode], references: [code])
+  items          PriceListItem[]
+  priceHistory   ProductPriceHistory[]
+  quotationLines QuotationLine[]
 
   @@unique([companyId, name])
   @@map("price_list")
@@ -747,10 +748,15 @@ model QuotationLine {
   unitCost      Decimal  @default(0) @map("unit_cost") @db.Decimal(18, 4)
   marginAmount  Decimal  @default(0) @map("margin_amount") @db.Decimal(18, 4)
   marginPct     Decimal  @default(0) @map("margin_pct") @db.Decimal(7, 4)
+  // PR-37 — nivel de precio aplicado al cotizar (P1/P2/P3). NULL = línea
+  // libre sin nivel asociado. El unit_price es editable por el vendedor.
+  priceListId   BigInt?  @map("price_list_id")
 
-  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  product   Product?  @relation(fields: [productId], references: [id])
+  quotation Quotation  @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product   Product?   @relation(fields: [productId], references: [id])
+  priceList PriceList? @relation(fields: [priceListId], references: [id])
 
+  @@index([priceListId], map: "idx_quoteline_pricelist")
   @@map("quotation_line")
 }
 

@@ -1983,5 +1983,18 @@ ALTER TABLE product_price_history
 CREATE INDEX idx_pricehist_pricelist ON product_price_history(price_list_id);
 
 -- ============================================================================
+-- 23. PRECIOS — nivel aplicado por línea (PR-37, HU-11.3)
+-- ============================================================================
+-- Cada línea de cotización (y eventualmente OV/factura) puede registrar el
+-- nivel de precio elegido al cotizar. Esto deja auditoría de "qué lista se
+-- aplicó" y permite reportes/operaciones sobre líneas vendidas a Precio 2,
+-- por ejemplo. El precio efectivo de la línea (`unit_price`) sigue siendo
+-- editable por el vendedor — `price_list_id` es informativo y opcional
+-- (NULL = línea sin nivel asociado / precio libre).
+ALTER TABLE quotation_line
+    ADD COLUMN price_list_id BIGINT REFERENCES price_list(id);
+CREATE INDEX idx_quoteline_pricelist ON quotation_line(price_list_id);
+
+-- ============================================================================
 -- FIN DEL ESQUEMA
 -- ============================================================================
