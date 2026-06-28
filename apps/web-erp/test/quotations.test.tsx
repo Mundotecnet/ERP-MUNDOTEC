@@ -215,3 +215,148 @@ describe('QuotationsPage', () => {
     expect(document.querySelector('#q-sp option[value="7"]')?.textContent).toBe('Otro Vendedor');
   });
 });
+
+describe('QuotationsPage — selector de nivel de precio por línea (PR-37)', () => {
+  const PRODUCT = { id: '5', sku: 'P-1', name: 'Producto X' };
+  const PRICING = {
+    productId: '5',
+    costPrice: '100',
+    minMarginPct: '0',
+    outOfMargin: false,
+    levels: [
+      {
+        priceListId: '101',
+        name: 'Precio 1',
+        salePrice: '142.86',
+        marginPct: '0.3',
+        outOfMargin: false,
+      },
+      {
+        priceListId: '102',
+        name: 'Precio 2',
+        salePrice: '180',
+        marginPct: '0.4444',
+        outOfMargin: false,
+      },
+      {
+        priceListId: '103',
+        name: 'Precio 3',
+        salePrice: '250',
+        marginPct: '0.6',
+        outOfMargin: false,
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.startsWith('/quotations')) {
+        return url.match(/\/quotations\/[^?]+$/) ? { data: QUOTE } : { data: [QUOTE] };
+      }
+      if (url === '/partners?type=CUSTOMER') return { data: [CUSTOMER] };
+      if (url === '/branches') return { data: [] };
+      if (url === '/products') return { data: [PRODUCT] };
+      if (url === '/products/5/pricing') return { data: PRICING };
+      if (url.startsWith('/users')) {
+        return { data: { data: [], total: 0, page: 1, pageSize: 200 } };
+      }
+      if (url === '/companies/current') return { data: { currencyCode: 'CRC' } };
+      return { data: [] };
+    });
+  });
+
+  async function openCreate() {
+    setup();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /nueva cotización/i }));
+    await waitFor(() => screen.getByLabelText(/producto línea 1/i));
+    return user;
+  }
+
+  it('al elegir producto: nivel default Precio 1 y precio autocompletado a 142.86; margen ef. = 30 %', async () => {
+    const user = await openCreate();
+
+    await user.selectOptions(screen.getByLabelText(/producto línea 1/i), '5');
+    // El selector de nivel aparece tras cargar pricing.
+    const levelSelect = await screen.findByTestId('quote-line-level-0');
+    await waitFor(() => expect((levelSelect as HTMLSelectElement).value).toBe('101'));
+    expect((screen.getByLabelText(/precio línea 1/i) as HTMLInputElement).value).toBe('142.86');
+    // Margen efectivo = (142.86-100)/142.86 ≈ 30 %.
+    await waitFor(() =>
+      expect(screen.getByTestId('quote-line-margin-0').textContent).toMatch(/30\.00 %/),
+    );
+  });
+
+  it('al cambiar a Precio 2: autocompleta precio a 180 y margen ef. ≈ 44.44 %', async () => {
+    const user = await openCreate();
+    await user.selectOptions(screen.getByLabelText(/producto línea 1/i), '5');
+    const levelSelect = (await screen.findByTestId('quote-line-level-0')) as HTMLSelectElement;
+    await waitFor(() => expect(levelSelect.value).toBe('101'));
+
+    await user.selectOptions(levelSelect, '102');
+    await waitFor(() =>
+      expect((screen.getByLabelText(/precio línea 1/i) as HTMLInputElement).value).toBe('180'),
+    );
+    expect(screen.getByTestId('quote-line-margin-0').textContent).toMatch(/44\.44 %/);
+  });
+
+  it('el override manual del precio no se pisa al re-renderizar; margen ef. refleja el precio override', async () => {
+    const user = await openCreate();
+    await user.selectOptions(screen.getByLabelText(/producto línea 1/i), '5');
+    const levelSelect = (await screen.findByTestId('quote-line-level-0')) as HTMLSelectElement;
+    await waitFor(() => expect(levelSelect.value).toBe('101'));
+
+    // El vendedor sobreescribe el precio (descuento de venta).
+    const priceInput = screen.getByLabelText(/precio línea 1/i) as HTMLInputElement;
+    await user.clear(priceInput);
+    await user.type(priceInput, '130');
+    expect(priceInput.value).toBe('130');
+    // Margen efectivo recalculado al precio override: (130-100)/130 ≈ 23.08 %.
+    await waitFor(() =>
+      expect(screen.getByTestId('quote-line-margin-0').textContent).toMatch(/23\.08 %/),
+    );
+    // El nivel sigue siendo P1 (no se desasocia automáticamente).
+    expect(levelSelect.value).toBe('101');
+  });
+
+  it('POST /quotations envía priceListId del nivel elegido en la línea', async () => {
+    vi.mocked(api.post).mockResolvedValueOnce({ data: { ...QUOTE, id: '99' } });
+    const user = await openCreate();
+    await user.selectOptions(screen.getByLabelText(/producto línea 1/i), '5');
+    const levelSelect = (await screen.findByTestId('quote-line-level-0')) as HTMLSelectElement;
+    await waitFor(() => expect(levelSelect.value).toBe('101'));
+    await user.selectOptions(levelSelect, '103');
+    await waitFor(() =>
+      expect((screen.getByLabelText(/precio línea 1/i) as HTMLInputElement).value).toBe('250'),
+    );
+
+    await user.type(document.getElementById('q-num') as HTMLInputElement, 'Q-LVL');
+    await user.click(screen.getByRole('button', { name: /^guardar$/i }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const [, body] = vi.mocked(api.post).mock.calls[0];
+    expect((body as { lines: Array<{ priceListId: string | null }> }).lines[0].priceListId).toBe(
+      '103',
+    );
+  });
+
+  it('línea libre (sin producto) deshabilita el selector y no envía priceListId', async () => {
+    vi.mocked(api.post).mockResolvedValueOnce({ data: { ...QUOTE, id: '99' } });
+    const user = await openCreate();
+
+    const levelSelect = screen.getByTestId('quote-line-level-0') as HTMLSelectElement;
+    expect(levelSelect.disabled).toBe(true);
+
+    await user.type(screen.getByLabelText(/descripción línea 1/i), 'Servicio libre');
+    await user.clear(screen.getByLabelText(/precio línea 1/i));
+    await user.type(screen.getByLabelText(/precio línea 1/i), '50');
+    await user.type(document.getElementById('q-num') as HTMLInputElement, 'Q-FREE');
+    await user.click(screen.getByRole('button', { name: /^guardar$/i }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const [, body] = vi.mocked(api.post).mock.calls[0];
+    expect((body as { lines: Array<{ priceListId: string | null }> }).lines[0].priceListId).toBe(
+      null,
+    );
+  });
+});

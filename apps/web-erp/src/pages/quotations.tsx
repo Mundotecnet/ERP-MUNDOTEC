@@ -2,7 +2,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import * as React from 'react';
-import { useFieldArray, useForm } from 'react-hook-form';
+import {
+  useFieldArray,
+  useForm,
+  type UseFormRegister,
+  type UseFormSetValue,
+  type UseFormWatch,
+} from 'react-hook-form';
 import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
@@ -26,6 +32,25 @@ interface QuoteLine {
   discountRate: string;
   taxRate: string;
   lineTotal: string;
+  // PR-37 — nivel de precio aplicado al cotizar (informativo).
+  priceListId: string | null;
+  priceListName: string | null;
+}
+
+// PR-37 — vista de precios del producto (devuelta por GET /products/:id/pricing).
+interface PricingLevelView {
+  priceListId: string;
+  name: string;
+  salePrice: string;
+  marginPct: string;
+  outOfMargin: boolean;
+}
+interface ProductPricingView {
+  productId: string;
+  costPrice: string;
+  minMarginPct: string;
+  outOfMargin: boolean;
+  levels: PricingLevelView[];
 }
 
 interface Quotation {
@@ -87,6 +112,8 @@ const lineSchema = z.object({
     .string()
     .regex(/^\d+(\.\d{1,4})?$/, 'Decimal ≥ 0')
     .optional(),
+  // PR-37 — opcional; cuando hay producto el LineRow lo defaultea a P1.
+  priceListId: z.string().optional(),
 });
 
 const quoteSchema = z.object({
@@ -456,6 +483,7 @@ function QuoteEditorDialog(props: EditorProps): JSX.Element {
     handleSubmit,
     control,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<QuoteFormValues>({
     resolver: zodResolver(quoteSchema),
@@ -477,6 +505,7 @@ function QuoteEditorDialog(props: EditorProps): JSX.Element {
             unitPrice: l.unitPrice,
             discountRate: l.discountRate,
             taxRate: l.taxRate,
+            priceListId: l.priceListId ?? '',
           })),
         }
       : {
@@ -497,6 +526,7 @@ function QuoteEditorDialog(props: EditorProps): JSX.Element {
               unitPrice: '0',
               discountRate: '0',
               taxRate: '0',
+              priceListId: '',
             },
           ],
         },
@@ -549,6 +579,7 @@ function QuoteEditorDialog(props: EditorProps): JSX.Element {
           unitPrice: l.unitPrice,
           discountRate: l.discountRate ?? '0',
           taxRate: l.taxRate ?? '0',
+          priceListId: l.priceListId?.trim() ? l.priceListId.trim() : null,
         })),
       };
       if (props.mode === 'create') return (await api.post('/quotations', payload)).data;
@@ -656,6 +687,7 @@ function QuoteEditorDialog(props: EditorProps): JSX.Element {
                       unitPrice: '0',
                       discountRate: '0',
                       taxRate: '0',
+                      priceListId: '',
                     })
                   }
                 >
@@ -663,7 +695,8 @@ function QuoteEditorDialog(props: EditorProps): JSX.Element {
                 </Button>
               </div>
               <p className="mb-2 text-xs text-muted-foreground">
-                Producto o descripción libre (al menos uno).
+                Producto o descripción libre (al menos uno). Al elegir producto el nivel default es
+                Precio 1; el precio se autocompleta y se puede sobreescribir.
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -671,8 +704,10 @@ function QuoteEditorDialog(props: EditorProps): JSX.Element {
                     <tr className="border-b text-left text-xs uppercase text-muted-foreground">
                       <th className="py-2 pr-2 font-medium">Producto</th>
                       <th className="py-2 pr-2 font-medium">Descripción</th>
+                      <th className="py-2 pr-2 font-medium">Nivel</th>
                       <th className="py-2 pr-2 font-medium text-right">Cant.</th>
                       <th className="py-2 pr-2 font-medium text-right">Precio</th>
+                      <th className="py-2 pr-2 font-medium text-right">Margen ef.</th>
                       <th className="py-2 pr-2 font-medium text-right">Desc %</th>
                       <th className="py-2 pr-2 font-medium text-right">Imp %</th>
                       <th className="py-2 pr-2 font-medium text-right">Total</th>
@@ -680,85 +715,18 @@ function QuoteEditorDialog(props: EditorProps): JSX.Element {
                     </tr>
                   </thead>
                   <tbody>
-                    {fields.map((field, idx) => {
-                      const q = parseFloat(lines[idx]?.quantity || '0');
-                      const p = parseFloat(lines[idx]?.unitPrice || '0');
-                      const d = parseFloat(lines[idx]?.discountRate || '0');
-                      const t = parseFloat(lines[idx]?.taxRate || '0');
-                      const lineTotal =
-                        Number.isFinite(q) && Number.isFinite(p)
-                          ? q *
-                            p *
-                            (1 - (Number.isFinite(d) ? d : 0)) *
-                            (1 + (Number.isFinite(t) ? t : 0))
-                          : 0;
-                      return (
-                        <tr key={field.id} className="border-b last:border-b-0">
-                          <td className="py-1 pr-2">
-                            <SelectInput
-                              aria-label={`Producto línea ${idx + 1}`}
-                              {...register(`lines.${idx}.productId`)}
-                            >
-                              <option value="">— (descripción libre) —</option>
-                              {productsList.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.sku} — {p.name}
-                                </option>
-                              ))}
-                            </SelectInput>
-                          </td>
-                          <td className="py-1 pr-2">
-                            <Input
-                              aria-label={`Descripción línea ${idx + 1}`}
-                              {...register(`lines.${idx}.description`)}
-                            />
-                          </td>
-                          <td className="py-1 pr-2">
-                            <Input
-                              inputMode="decimal"
-                              aria-label={`Cantidad línea ${idx + 1}`}
-                              {...register(`lines.${idx}.quantity`)}
-                            />
-                          </td>
-                          <td className="py-1 pr-2">
-                            <Input
-                              inputMode="decimal"
-                              aria-label={`Precio línea ${idx + 1}`}
-                              {...register(`lines.${idx}.unitPrice`)}
-                            />
-                          </td>
-                          <td className="py-1 pr-2">
-                            <Input
-                              inputMode="decimal"
-                              aria-label={`Descuento línea ${idx + 1}`}
-                              {...register(`lines.${idx}.discountRate`)}
-                            />
-                          </td>
-                          <td className="py-1 pr-2">
-                            <Input
-                              inputMode="decimal"
-                              aria-label={`Impuesto línea ${idx + 1}`}
-                              {...register(`lines.${idx}.taxRate`)}
-                            />
-                          </td>
-                          <td className="py-1 pr-2 text-right text-xs tabular-nums">
-                            {lineTotal.toFixed(4)}
-                          </td>
-                          <td className="py-1 text-right">
-                            {fields.length > 1 && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => remove(idx)}
-                              >
-                                🗑
-                              </Button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {fields.map((field, idx) => (
+                      <LineRow
+                        key={field.id}
+                        idx={idx}
+                        register={register}
+                        watch={watch}
+                        setValue={setValue}
+                        productsList={productsList}
+                        showRemove={fields.length > 1}
+                        onRemove={() => remove(idx)}
+                      />
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -842,6 +810,7 @@ function QuoteViewDialog({ quote, onClose }: { quote: Quotation; onClose(): void
             <thead>
               <tr className="border-b text-left text-xs uppercase text-muted-foreground">
                 <th className="py-2 pr-2 font-medium">SKU/Desc.</th>
+                <th className="py-2 pr-2 font-medium">Nivel</th>
                 <th className="py-2 pr-2 font-medium text-right">Cant.</th>
                 <th className="py-2 pr-2 font-medium text-right">Precio</th>
                 <th className="py-2 pr-2 font-medium text-right">Desc</th>
@@ -855,6 +824,7 @@ function QuoteViewDialog({ quote, onClose }: { quote: Quotation; onClose(): void
                   <td className="py-2 pr-2 font-mono text-xs">
                     {l.productSku ?? l.description ?? '—'}
                   </td>
+                  <td className="py-2 pr-2 text-xs">{l.priceListName ?? '—'}</td>
                   <td className="py-2 pr-2 text-right">{l.quantity}</td>
                   <td className="py-2 pr-2 text-right">{l.unitPrice}</td>
                   <td className="py-2 pr-2 text-right">{l.discountRate}</td>
@@ -1020,3 +990,159 @@ const SelectInput = React.forwardRef<
   />
 ));
 SelectInput.displayName = 'SelectInput';
+
+// ============================================================================
+// PR-37 — Fila de línea con selector de nivel + autocompletar precio + margen
+// ============================================================================
+// Cada fila tiene su propio hook de fetch a /products/:id/pricing (cacheado
+// por React Query: una sola request por producto único en la cotización).
+// Comportamiento:
+// - Al elegir producto sin priceListId todavía → default Precio 1 y autocompleta.
+// - Al cambiar nivel → autocompleta unitPrice con sale_price de ese nivel.
+// - Si el usuario sobreescribe manualmente unitPrice → se respeta; el priceListId
+//   no se desasocia (queda como "nivel de referencia").
+// - Margen efectivo: (price - cost) / price * 100, solo cuando hay producto y
+//   pricing cargado y price > cost.
+
+function LineRow(props: {
+  idx: number;
+  register: UseFormRegister<QuoteFormValues>;
+  watch: UseFormWatch<QuoteFormValues>;
+  setValue: UseFormSetValue<QuoteFormValues>;
+  productsList: Product[];
+  showRemove: boolean;
+  onRemove(): void;
+}): JSX.Element {
+  const { idx, register, watch, setValue, productsList, showRemove, onRemove } = props;
+  const productId = watch(`lines.${idx}.productId`) ?? '';
+  const priceListId = watch(`lines.${idx}.priceListId`) ?? '';
+  const unitPriceStr = watch(`lines.${idx}.unitPrice`) ?? '0';
+  const quantityStr = watch(`lines.${idx}.quantity`) ?? '0';
+  const discountStr = watch(`lines.${idx}.discountRate`) ?? '0';
+  const taxStr = watch(`lines.${idx}.taxRate`) ?? '0';
+
+  const pricingQ = useQuery<ProductPricingView>({
+    queryKey: ['pricing', productId],
+    queryFn: async () => (await api.get(`/products/${productId}/pricing`)).data,
+    enabled: !!productId,
+  });
+
+  // 1) Default a Precio 1 cuando llega pricing y la línea no tiene nivel.
+  React.useEffect(() => {
+    if (!pricingQ.data || priceListId) return;
+    const first = pricingQ.data.levels[0];
+    if (!first) return;
+    setValue(`lines.${idx}.priceListId`, first.priceListId, { shouldDirty: true });
+    setValue(`lines.${idx}.unitPrice`, first.salePrice, { shouldDirty: true });
+    // Intencionalmente solo depende de la respuesta del server: idx/setValue
+    // tienen identidad estable; priceListId aparece en el guard, no como dep
+    // para no re-ejecutar al setearla acá mismo.
+  }, [pricingQ.data, productId]);
+
+  // 2) Cuando el usuario cambia el nivel, autocompleta el precio.
+  React.useEffect(() => {
+    if (!pricingQ.data || !priceListId) return;
+    const lvl = pricingQ.data.levels.find((l) => l.priceListId === priceListId);
+    if (!lvl) return;
+    if (unitPriceStr !== lvl.salePrice) {
+      setValue(`lines.${idx}.unitPrice`, lvl.salePrice, { shouldDirty: true });
+    }
+    // No incluimos unitPriceStr en deps: queremos disparar solo cuando cambia
+    // el nivel o el pricing del producto, no cada vez que el usuario tipea precio.
+  }, [pricingQ.data, priceListId]);
+
+  const q = parseFloat(quantityStr || '0');
+  const p = parseFloat(unitPriceStr || '0');
+  const d = parseFloat(discountStr || '0');
+  const t = parseFloat(taxStr || '0');
+  const lineTotal =
+    Number.isFinite(q) && Number.isFinite(p)
+      ? q * p * (1 - (Number.isFinite(d) ? d : 0)) * (1 + (Number.isFinite(t) ? t : 0))
+      : 0;
+
+  // Margen efectivo de la línea: (price - cost) / price.
+  const cost = pricingQ.data ? parseFloat(pricingQ.data.costPrice) : NaN;
+  const effectiveMargin =
+    Number.isFinite(cost) && cost > 0 && p > 0 && p >= cost ? ((p - cost) / p) * 100 : null;
+
+  return (
+    <tr className="border-b last:border-b-0" data-testid={`quote-line-row-${idx}`}>
+      <td className="py-1 pr-2">
+        <SelectInput
+          aria-label={`Producto línea ${idx + 1}`}
+          {...register(`lines.${idx}.productId`)}
+        >
+          <option value="">— (descripción libre) —</option>
+          {productsList.map((prod) => (
+            <option key={prod.id} value={prod.id}>
+              {prod.sku} — {prod.name}
+            </option>
+          ))}
+        </SelectInput>
+      </td>
+      <td className="py-1 pr-2">
+        <Input
+          aria-label={`Descripción línea ${idx + 1}`}
+          {...register(`lines.${idx}.description`)}
+        />
+      </td>
+      <td className="py-1 pr-2">
+        <SelectInput
+          aria-label={`Nivel línea ${idx + 1}`}
+          data-testid={`quote-line-level-${idx}`}
+          disabled={!productId || !pricingQ.data}
+          {...register(`lines.${idx}.priceListId`)}
+        >
+          <option value="">—</option>
+          {(pricingQ.data?.levels ?? []).map((lvl) => (
+            <option key={lvl.priceListId} value={lvl.priceListId}>
+              {lvl.name}
+            </option>
+          ))}
+        </SelectInput>
+      </td>
+      <td className="py-1 pr-2">
+        <Input
+          inputMode="decimal"
+          aria-label={`Cantidad línea ${idx + 1}`}
+          {...register(`lines.${idx}.quantity`)}
+        />
+      </td>
+      <td className="py-1 pr-2">
+        <Input
+          inputMode="decimal"
+          aria-label={`Precio línea ${idx + 1}`}
+          {...register(`lines.${idx}.unitPrice`)}
+        />
+      </td>
+      <td
+        className="py-1 pr-2 text-right text-xs tabular-nums"
+        data-testid={`quote-line-margin-${idx}`}
+      >
+        {effectiveMargin === null ? '—' : `${effectiveMargin.toFixed(2)} %`}
+      </td>
+      <td className="py-1 pr-2">
+        <Input
+          inputMode="decimal"
+          aria-label={`Descuento línea ${idx + 1}`}
+          {...register(`lines.${idx}.discountRate`)}
+        />
+      </td>
+      <td className="py-1 pr-2">
+        <Input
+          inputMode="decimal"
+          aria-label={`Impuesto línea ${idx + 1}`}
+          {...register(`lines.${idx}.taxRate`)}
+        />
+      </td>
+      <td className="py-1 pr-2 text-right text-xs tabular-nums">{lineTotal.toFixed(4)}</td>
+      <td className="py-1 text-right">
+        {showRemove && (
+          <Button type="button" size="sm" variant="ghost" onClick={onRemove}>
+            🗑
+          </Button>
+        )}
+      </td>
+    </tr>
+  );
+}

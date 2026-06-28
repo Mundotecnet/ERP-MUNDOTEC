@@ -19,6 +19,11 @@ interface Fixtures {
   productBId: string;
   salespersonAId: string;
   salespersonBId: string;
+  // PR-37 — ids de las 3 listas P1/P2/P3 de la empresa A + una de B para
+  // probar aislamiento.
+  p1AId: string;
+  p2AId: string;
+  p1BId: string;
 }
 
 async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
@@ -117,6 +122,37 @@ async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
     data: { companyId: b.id, sku: 'Q-B-1', name: 'Producto Q B', uomId: uom.id },
   });
 
+  // PR-37 — seed P1/P2/P3 SALE para ambas empresas (en runtime se
+  // auto-seedean; en tests deben crearse explícito).
+  for (const co of [a, b]) {
+    for (const name of ['Precio 1', 'Precio 2', 'Precio 3']) {
+      await tc.raw.priceList.upsert({
+        where: { companyId_name: { companyId: co.id, name } },
+        update: {},
+        create: { companyId: co.id, name, currencyCode: co.currencyCode, listType: 'SALE' },
+      });
+    }
+  }
+  // Y una lista PURCHASE en A para verificar que el server la rechaza como
+  // priceListId de línea de cotización.
+  await tc.raw.priceList.upsert({
+    where: { companyId_name: { companyId: a.id, name: 'Costo proveedor' } },
+    update: {},
+    create: {
+      companyId: a.id,
+      name: 'Costo proveedor',
+      currencyCode: a.currencyCode,
+      listType: 'PURCHASE',
+    },
+  });
+  const listsA = await tc.raw.priceList.findMany({
+    where: { companyId: a.id, name: { in: ['Precio 1', 'Precio 2'] } },
+    orderBy: { name: 'asc' },
+  });
+  const listsB = await tc.raw.priceList.findMany({
+    where: { companyId: b.id, name: 'Precio 1' },
+  });
+
   return {
     companyAId: a.id,
     tokenA: adminA.token,
@@ -131,6 +167,9 @@ async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
     productBId: productB.id.toString(),
     salespersonAId: salespersonA.id.toString(),
     salespersonBId: salespersonB.id.toString(),
+    p1AId: listsA[0].id.toString(),
+    p2AId: listsA[1].id.toString(),
+    p1BId: listsB[0].id.toString(),
   };
 }
 
@@ -446,6 +485,148 @@ describe('Quotations (HU-10.1)', () => {
     it('sin token → 401', async () => {
       const res = await request(tc.app.getHttpServer()).get('/quotations');
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe('Nivel de precio por línea (PR-37)', () => {
+    it('persiste priceListId y devuelve priceListName en la vista', async () => {
+      const created = await request(tc.app.getHttpServer())
+        .post('/quotations')
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          customerId: fx.customerAId,
+          quoteNumber: 'Q-PR37-1',
+          quoteDate: '2026-06-27',
+          currencyCode: 'CRC',
+          lines: [
+            { productId: fx.productAId, quantity: '1', unitPrice: '100', priceListId: fx.p1AId },
+            { productId: fx.productAId, quantity: '2', unitPrice: '200', priceListId: fx.p2AId },
+          ],
+        });
+      expect(created.status).toBe(201);
+      expect(created.body.lines).toHaveLength(2);
+      expect(created.body.lines[0]).toMatchObject({
+        priceListId: fx.p1AId,
+        priceListName: 'Precio 1',
+      });
+      expect(created.body.lines[1]).toMatchObject({
+        priceListId: fx.p2AId,
+        priceListName: 'Precio 2',
+      });
+
+      // GET /quotations/:id también lo devuelve.
+      const got = await request(tc.app.getHttpServer())
+        .get(`/quotations/${created.body.id}`)
+        .set('Authorization', `Bearer ${fx.tokenA}`);
+      expect(got.status).toBe(200);
+      expect(got.body.lines[0].priceListName).toBe('Precio 1');
+      expect(got.body.lines[1].priceListName).toBe('Precio 2');
+    });
+
+    it('priceListId opcional: línea sin nivel queda con priceListId=null', async () => {
+      const created = await request(tc.app.getHttpServer())
+        .post('/quotations')
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          customerId: fx.customerAId,
+          quoteNumber: 'Q-PR37-2',
+          quoteDate: '2026-06-27',
+          currencyCode: 'CRC',
+          lines: [{ productId: fx.productAId, quantity: '1', unitPrice: '50' }],
+        });
+      expect(created.status).toBe(201);
+      expect(created.body.lines[0].priceListId).toBeNull();
+      expect(created.body.lines[0].priceListName).toBeNull();
+    });
+
+    it('priceListId de otra empresa → 400', async () => {
+      const res = await request(tc.app.getHttpServer())
+        .post('/quotations')
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          customerId: fx.customerAId,
+          quoteNumber: 'Q-PR37-3',
+          quoteDate: '2026-06-27',
+          currencyCode: 'CRC',
+          lines: [
+            { productId: fx.productAId, quantity: '1', unitPrice: '10', priceListId: fx.p1BId },
+          ],
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/lista de precios/i);
+    });
+
+    it('priceListId apuntando a lista PURCHASE → 400', async () => {
+      const purchase = await tc.raw.priceList.findFirstOrThrow({
+        where: { companyId: fx.companyAId, name: 'Costo proveedor' },
+      });
+      const res = await request(tc.app.getHttpServer())
+        .post('/quotations')
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          customerId: fx.customerAId,
+          quoteNumber: 'Q-PR37-4',
+          quoteDate: '2026-06-27',
+          currencyCode: 'CRC',
+          lines: [
+            {
+              productId: fx.productAId,
+              quantity: '1',
+              unitPrice: '10',
+              priceListId: purchase.id.toString(),
+            },
+          ],
+        });
+      expect(res.status).toBe(400);
+    });
+
+    it('priceListId inexistente → 400', async () => {
+      const res = await request(tc.app.getHttpServer())
+        .post('/quotations')
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          customerId: fx.customerAId,
+          quoteNumber: 'Q-PR37-5',
+          quoteDate: '2026-06-27',
+          currencyCode: 'CRC',
+          lines: [
+            {
+              productId: fx.productAId,
+              quantity: '1',
+              unitPrice: '10',
+              priceListId: '999999',
+            },
+          ],
+        });
+      expect(res.status).toBe(400);
+    });
+
+    it('PATCH /quotations/:id puede actualizar el priceListId de una línea', async () => {
+      const created = await request(tc.app.getHttpServer())
+        .post('/quotations')
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          customerId: fx.customerAId,
+          quoteNumber: 'Q-PR37-6',
+          quoteDate: '2026-06-27',
+          currencyCode: 'CRC',
+          lines: [
+            { productId: fx.productAId, quantity: '1', unitPrice: '100', priceListId: fx.p1AId },
+          ],
+        });
+      expect(created.status).toBe(201);
+
+      const patched = await request(tc.app.getHttpServer())
+        .patch(`/quotations/${created.body.id}`)
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          lines: [
+            { productId: fx.productAId, quantity: '1', unitPrice: '180', priceListId: fx.p2AId },
+          ],
+        });
+      expect(patched.status).toBe(200);
+      expect(patched.body.lines[0].priceListId).toBe(fx.p2AId);
+      expect(patched.body.lines[0].priceListName).toBe('Precio 2');
     });
   });
 });
