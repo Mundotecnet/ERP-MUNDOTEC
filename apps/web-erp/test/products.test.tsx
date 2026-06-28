@@ -122,7 +122,7 @@ describe('ProductsPage', () => {
     expect(screen.getByText(/sin resultados/i)).toBeInTheDocument();
   });
 
-  it('abre el dialog "Nuevo producto" y valida SKU/nombre requeridos', async () => {
+  it('abre el dialog "Nuevo producto" y valida Nombre/UoM requeridos (SKU ya no se valida en cliente)', async () => {
     setup();
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: /nuevo producto/i }));
@@ -134,13 +134,35 @@ describe('ProductsPage', () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 
-  it('envía POST /products con el payload correcto al guardar', async () => {
+  it('PR-39: el input SKU en creación está deshabilitado y muestra "Se asignará automáticamente"', async () => {
+    setup();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /nuevo producto/i }));
+    const sku = (await screen.findByLabelText('SKU')) as HTMLInputElement;
+    expect(sku.disabled).toBe(true);
+    expect(sku.readOnly).toBe(true);
+    expect(sku.value).toBe('');
+    expect(sku.placeholder).toBe('Se asignará automáticamente');
+  });
+
+  it('PR-39: en edición el input SKU muestra el SKU asignado y queda deshabilitado', async () => {
+    setup();
+    const user = userEvent.setup();
+    await screen.findByText('Switch 24 puertos');
+    await user.click(screen.getByRole('button', { name: /editar/i }));
+    const sku = (await screen.findByLabelText('SKU')) as HTMLInputElement;
+    expect(sku.value).toBe('SKU-001');
+    expect(sku.disabled).toBe(true);
+    expect(sku.readOnly).toBe(true);
+  });
+
+  it('envía POST /products con el payload correcto (sin sku ni precios)', async () => {
     vi.mocked(api.post).mockResolvedValueOnce({ data: { ...PRODUCT_A, id: '99' } });
     setup();
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: /nuevo producto/i }));
 
-    await user.type(screen.getByLabelText('SKU'), 'SKU-NEW');
+    // PR-39: el SKU NO se tipea; el server lo asigna.
     await user.type(screen.getByLabelText('Nombre'), 'Producto nuevo');
     await user.selectOptions(screen.getByLabelText(/unidad de medida/i), '5');
     await user.click(screen.getByRole('button', { name: /^guardar$/i }));
@@ -149,7 +171,6 @@ describe('ProductsPage', () => {
     const [url, body] = vi.mocked(api.post).mock.calls[0];
     expect(url).toBe('/products');
     expect(body).toMatchObject({
-      sku: 'SKU-NEW',
       name: 'Producto nuevo',
       uomId: '5',
       trackingType: 'NONE',
@@ -160,8 +181,9 @@ describe('ProductsPage', () => {
       departmentId: null,
       barcode: null,
     });
-    // PR-32: los campos de precio no viajan por POST /products; viven en
-    // la pestaña Precios (PATCH /products/:id/pricing).
+    // PR-39: sku NO viaja en el payload.
+    expect((body as { sku?: unknown }).sku).toBeUndefined();
+    // PR-32: los campos de precio tampoco.
     expect((body as { costPrice?: unknown }).costPrice).toBeUndefined();
     expect((body as { salePrice?: unknown }).salePrice).toBeUndefined();
     expect((body as { priceCurrency?: unknown }).priceCurrency).toBeUndefined();

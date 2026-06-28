@@ -61,6 +61,7 @@ model Company {
   invoices          Invoice[]
   priceHistory      ProductPriceHistory[]
   priceLists        PriceList[]
+  documentSequences DocumentSequence[]
 
   @@map("company")
 }
@@ -916,4 +917,21 @@ model InvoiceLine {
 
   @@index([priceListId], map: "idx_invline_pricelist")
   @@map("invoice_line")
+}
+
+// HU-12.1 / PR-39 — Secuencias de documentos (autoincremento por empresa).
+// Una fila por (companyId, sequenceType). La generación atómica vive en el
+// service: UPDATE ... SET next_value = next_value + 1 ... RETURNING
+// next_value, evitando MAX()+1 (race en alta concurrencia).
+model DocumentSequence {
+  id           BigInt   @id @default(autoincrement())
+  companyId    BigInt   @map("company_id")
+  sequenceType String   @map("sequence_type") @db.VarChar(30)
+  nextValue    BigInt   @map("next_value")
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, sequenceType])
+  @@map("document_sequence")
 }

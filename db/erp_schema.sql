@@ -2010,5 +2010,25 @@ ALTER TABLE invoice_line
 CREATE INDEX idx_invline_pricelist ON invoice_line(price_list_id);
 
 -- ============================================================================
+-- 25. SECUENCIAS DE DOCUMENTOS (PR-39, HU-12.1)
+-- ============================================================================
+-- Una fila por (empresa, tipo) con el "próximo valor" a asignar. La
+-- generación atómica vive en el service como `UPDATE ... SET next_value =
+-- next_value + 1 ... RETURNING next_value`, garantizando que dos
+-- transacciones concurrentes nunca obtengan el mismo número.
+--
+-- Por ahora solo se usa para PRODUCT_SKU (autoincremento por empresa,
+-- arranca en 100000). El diseño es genérico: futuros tipos como
+-- INVOICE_NUMBER, QUOTE_NUMBER, SO_NUMBER pueden compartir la misma tabla.
+CREATE TABLE document_sequence (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    company_id      BIGINT NOT NULL REFERENCES company(id),
+    sequence_type   VARCHAR(30) NOT NULL,                  -- p.ej. PRODUCT_SKU
+    next_value      BIGINT NOT NULL,                       -- próximo valor a entregar
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (company_id, sequence_type)
+);
+
+-- ============================================================================
 -- FIN DEL ESQUEMA
 -- ============================================================================
