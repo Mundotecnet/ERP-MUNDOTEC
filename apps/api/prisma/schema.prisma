@@ -436,11 +436,13 @@ model PriceList {
   listType     String   @default("SALE") @map("list_type") @db.VarChar(10)
   isActive     Boolean  @default(true) @map("is_active")
 
-  company        Company               @relation(fields: [companyId], references: [id])
-  currency       Currency              @relation(fields: [currencyCode], references: [code])
-  items          PriceListItem[]
-  priceHistory   ProductPriceHistory[]
-  quotationLines QuotationLine[]
+  company         Company               @relation(fields: [companyId], references: [id])
+  currency        Currency              @relation(fields: [currencyCode], references: [code])
+  items           PriceListItem[]
+  priceHistory    ProductPriceHistory[]
+  quotationLines  QuotationLine[]
+  salesOrderLines SalesOrderLine[]
+  invoiceLines    InvoiceLine[]
 
   @@unique([companyId, name])
   @@map("price_list")
@@ -817,10 +819,14 @@ model SalesOrderLine {
   discountRate  Decimal @default(0) @map("discount_rate") @db.Decimal(7, 4)
   taxRate       Decimal @default(0) @map("tax_rate") @db.Decimal(7, 4)
   lineTotal     Decimal @map("line_total") @db.Decimal(18, 4)
+  // PR-38 — nivel de precio aplicado al cotizar/aceptar la OV (informativo).
+  priceListId   BigInt? @map("price_list_id")
 
   salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
   product    Product    @relation(fields: [productId], references: [id])
+  priceList  PriceList? @relation(fields: [priceListId], references: [id])
 
+  @@index([priceListId], map: "idx_soline_pricelist")
   @@map("sales_order_line")
 }
 
@@ -901,9 +907,13 @@ model InvoiceLine {
   cabysCode      String? @map("cabys_code") @db.VarChar(13)
   discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(18, 4)
   exemptAmount   Decimal @default(0) @map("exempt_amount") @db.Decimal(18, 4)
+  // PR-38 — nivel de precio aplicado al emitir (informativo).
+  priceListId    BigInt? @map("price_list_id")
 
-  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  product Product? @relation(fields: [productId], references: [id])
+  invoice   Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product   Product?   @relation(fields: [productId], references: [id])
+  priceList PriceList? @relation(fields: [priceListId], references: [id])
 
+  @@index([priceListId], map: "idx_invline_pricelist")
   @@map("invoice_line")
 }

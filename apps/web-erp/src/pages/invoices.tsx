@@ -2,7 +2,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import * as React from 'react';
-import { useFieldArray, useForm } from 'react-hook-form';
+import {
+  useFieldArray,
+  useForm,
+  type UseFormRegister,
+  type UseFormSetValue,
+  type UseFormWatch,
+} from 'react-hook-form';
 import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
@@ -25,6 +31,25 @@ interface InvoiceLine {
   unitPrice: string;
   taxRate: string;
   lineTotal: string;
+  // PR-38 — nivel de precio aplicado (informativo).
+  priceListId: string | null;
+  priceListName: string | null;
+}
+
+// PR-38 — vista de pricing del producto (devuelta por GET /products/:id/pricing).
+interface PricingLevelView {
+  priceListId: string;
+  name: string;
+  salePrice: string;
+  marginPct: string;
+  outOfMargin: boolean;
+}
+interface ProductPricingView {
+  productId: string;
+  costPrice: string;
+  minMarginPct: string;
+  outOfMargin: boolean;
+  levels: PricingLevelView[];
 }
 
 interface Invoice {
@@ -89,6 +114,8 @@ const lineSchema = z.object({
     .string()
     .regex(/^\d+(\.\d{1,4})?$/, 'Decimal ≥ 0')
     .optional(),
+  // PR-38 — opcional; el LineRow lo defaultea a Precio 1 al elegir producto.
+  priceListId: z.string().optional(),
 });
 
 const invSchema = z.object({
@@ -365,6 +392,7 @@ function InvoiceEditorDialog(props: EditorProps): JSX.Element {
     handleSubmit,
     control,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<InvFormValues>({
     resolver: zodResolver(invSchema),
@@ -378,7 +406,16 @@ function InvoiceEditorDialog(props: EditorProps): JSX.Element {
       dueDate: '',
       currencyCode: props.companyCurrency,
       exchangeRate: '1',
-      lines: [{ productId: '', description: '', quantity: '1', unitPrice: '0', taxRate: '0' }],
+      lines: [
+        {
+          productId: '',
+          description: '',
+          quantity: '1',
+          unitPrice: '0',
+          taxRate: '0',
+          priceListId: '',
+        },
+      ],
     },
   });
 
@@ -421,6 +458,7 @@ function InvoiceEditorDialog(props: EditorProps): JSX.Element {
           quantity: l.quantity,
           unitPrice: l.unitPrice,
           taxRate: l.taxRate ?? '0',
+          priceListId: l.priceListId?.trim() ? l.priceListId.trim() : null,
         })),
       };
       return (await api.post('/invoices', payload)).data;
@@ -536,6 +574,7 @@ function InvoiceEditorDialog(props: EditorProps): JSX.Element {
                       quantity: '1',
                       unitPrice: '0',
                       taxRate: '0',
+                      priceListId: '',
                     })
                   }
                 >
@@ -552,82 +591,28 @@ function InvoiceEditorDialog(props: EditorProps): JSX.Element {
                     <tr className="border-b text-left text-xs uppercase text-muted-foreground">
                       <th className="py-2 pr-2 font-medium">Producto</th>
                       <th className="py-2 pr-2 font-medium">Descripción</th>
+                      <th className="py-2 pr-2 font-medium">Nivel</th>
                       <th className="py-2 pr-2 font-medium text-right">Cant.</th>
                       <th className="py-2 pr-2 font-medium text-right">Precio</th>
+                      <th className="py-2 pr-2 font-medium text-right">Margen ef.</th>
                       <th className="py-2 pr-2 font-medium text-right">Imp %</th>
                       <th className="py-2 pr-2 font-medium text-right">Total</th>
                       <th />
                     </tr>
                   </thead>
                   <tbody>
-                    {fields.map((field, idx) => {
-                      const q = parseFloat(lines[idx]?.quantity || '0');
-                      const p = parseFloat(lines[idx]?.unitPrice || '0');
-                      const t = parseFloat(lines[idx]?.taxRate || '0');
-                      const lineTotal =
-                        Number.isFinite(q) && Number.isFinite(p)
-                          ? q * p * (1 + (Number.isFinite(t) ? t : 0))
-                          : 0;
-                      return (
-                        <tr key={field.id} className="border-b last:border-b-0">
-                          <td className="py-1 pr-2">
-                            <SelectInput
-                              aria-label={`Producto línea ${idx + 1}`}
-                              {...register(`lines.${idx}.productId`)}
-                            >
-                              <option value="">— (descripción libre) —</option>
-                              {productsList.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.sku} — {p.name}
-                                </option>
-                              ))}
-                            </SelectInput>
-                          </td>
-                          <td className="py-1 pr-2">
-                            <Input
-                              aria-label={`Descripción línea ${idx + 1}`}
-                              {...register(`lines.${idx}.description`)}
-                            />
-                          </td>
-                          <td className="py-1 pr-2">
-                            <Input
-                              inputMode="decimal"
-                              aria-label={`Cantidad línea ${idx + 1}`}
-                              {...register(`lines.${idx}.quantity`)}
-                            />
-                          </td>
-                          <td className="py-1 pr-2">
-                            <Input
-                              inputMode="decimal"
-                              aria-label={`Precio línea ${idx + 1}`}
-                              {...register(`lines.${idx}.unitPrice`)}
-                            />
-                          </td>
-                          <td className="py-1 pr-2">
-                            <Input
-                              inputMode="decimal"
-                              aria-label={`Impuesto línea ${idx + 1}`}
-                              {...register(`lines.${idx}.taxRate`)}
-                            />
-                          </td>
-                          <td className="py-1 pr-2 text-right text-xs tabular-nums">
-                            {lineTotal.toFixed(4)}
-                          </td>
-                          <td className="py-1 text-right">
-                            {fields.length > 1 && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => remove(idx)}
-                              >
-                                🗑
-                              </Button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {fields.map((field, idx) => (
+                      <LineRow
+                        key={field.id}
+                        idx={idx}
+                        register={register}
+                        watch={watch}
+                        setValue={setValue}
+                        productsList={productsList}
+                        showRemove={fields.length > 1}
+                        onRemove={() => remove(idx)}
+                      />
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -702,6 +687,7 @@ function InvoiceViewDialog({ inv, onClose }: { inv: Invoice; onClose(): void }):
             <thead>
               <tr className="border-b text-left text-xs uppercase text-muted-foreground">
                 <th className="py-2 pr-2 font-medium">SKU/Desc.</th>
+                <th className="py-2 pr-2 font-medium">Nivel</th>
                 <th className="py-2 pr-2 font-medium text-right">Cant.</th>
                 <th className="py-2 pr-2 font-medium text-right">Precio</th>
                 <th className="py-2 pr-2 font-medium text-right">Imp</th>
@@ -714,6 +700,7 @@ function InvoiceViewDialog({ inv, onClose }: { inv: Invoice; onClose(): void }):
                   <td className="py-2 pr-2 font-mono text-xs">
                     {l.productSku ?? l.description ?? '—'}
                   </td>
+                  <td className="py-2 pr-2 text-xs">{l.priceListName ?? '—'}</td>
                   <td className="py-2 pr-2 text-right">{l.quantity}</td>
                   <td className="py-2 pr-2 text-right">{l.unitPrice}</td>
                   <td className="py-2 pr-2 text-right">{l.taxRate}</td>
@@ -803,3 +790,133 @@ const SelectInput = React.forwardRef<
   />
 ));
 SelectInput.displayName = 'SelectInput';
+
+// ============================================================================
+// PR-38 — Fila de línea de factura con selector de nivel + margen efectivo
+// ============================================================================
+// Espejo del LineRow de quotations.tsx (PR-37). Admite líneas libres
+// (productId vacío + description). Si no hay producto, el selector de nivel
+// queda deshabilitado y no se calcula margen efectivo.
+function LineRow(props: {
+  idx: number;
+  register: UseFormRegister<InvFormValues>;
+  watch: UseFormWatch<InvFormValues>;
+  setValue: UseFormSetValue<InvFormValues>;
+  productsList: Product[];
+  showRemove: boolean;
+  onRemove(): void;
+}): JSX.Element {
+  const { idx, register, watch, setValue, productsList, showRemove, onRemove } = props;
+  const productId = watch(`lines.${idx}.productId`) ?? '';
+  const priceListId = watch(`lines.${idx}.priceListId`) ?? '';
+  const unitPriceStr = watch(`lines.${idx}.unitPrice`) ?? '0';
+  const quantityStr = watch(`lines.${idx}.quantity`) ?? '0';
+  const taxStr = watch(`lines.${idx}.taxRate`) ?? '0';
+
+  const pricingQ = useQuery<ProductPricingView>({
+    queryKey: ['pricing', productId],
+    queryFn: async () => (await api.get(`/products/${productId}/pricing`)).data,
+    enabled: !!productId,
+  });
+
+  React.useEffect(() => {
+    if (!pricingQ.data?.levels || priceListId) return;
+    const first = pricingQ.data.levels[0];
+    if (!first) return;
+    setValue(`lines.${idx}.priceListId`, first.priceListId, { shouldDirty: true });
+    setValue(`lines.${idx}.unitPrice`, first.salePrice, { shouldDirty: true });
+  }, [pricingQ.data, productId]);
+
+  React.useEffect(() => {
+    if (!pricingQ.data?.levels || !priceListId) return;
+    const lvl = pricingQ.data.levels.find((l) => l.priceListId === priceListId);
+    if (!lvl) return;
+    if (unitPriceStr !== lvl.salePrice) {
+      setValue(`lines.${idx}.unitPrice`, lvl.salePrice, { shouldDirty: true });
+    }
+  }, [pricingQ.data, priceListId]);
+
+  const q = parseFloat(quantityStr || '0');
+  const p = parseFloat(unitPriceStr || '0');
+  const t = parseFloat(taxStr || '0');
+  const lineTotal =
+    Number.isFinite(q) && Number.isFinite(p) ? q * p * (1 + (Number.isFinite(t) ? t : 0)) : 0;
+
+  const cost = pricingQ.data ? parseFloat(pricingQ.data.costPrice) : NaN;
+  const effectiveMargin =
+    Number.isFinite(cost) && cost > 0 && p > 0 && p >= cost ? ((p - cost) / p) * 100 : null;
+
+  return (
+    <tr className="border-b last:border-b-0" data-testid={`inv-line-row-${idx}`}>
+      <td className="py-1 pr-2">
+        <SelectInput
+          aria-label={`Producto línea ${idx + 1}`}
+          {...register(`lines.${idx}.productId`)}
+        >
+          <option value="">— (descripción libre) —</option>
+          {productsList.map((prod) => (
+            <option key={prod.id} value={prod.id}>
+              {prod.sku} — {prod.name}
+            </option>
+          ))}
+        </SelectInput>
+      </td>
+      <td className="py-1 pr-2">
+        <Input
+          aria-label={`Descripción línea ${idx + 1}`}
+          {...register(`lines.${idx}.description`)}
+        />
+      </td>
+      <td className="py-1 pr-2">
+        <SelectInput
+          aria-label={`Nivel línea ${idx + 1}`}
+          data-testid={`inv-line-level-${idx}`}
+          disabled={!productId || !pricingQ.data}
+          {...register(`lines.${idx}.priceListId`)}
+        >
+          <option value="">—</option>
+          {(pricingQ.data?.levels ?? []).map((lvl) => (
+            <option key={lvl.priceListId} value={lvl.priceListId}>
+              {lvl.name}
+            </option>
+          ))}
+        </SelectInput>
+      </td>
+      <td className="py-1 pr-2">
+        <Input
+          inputMode="decimal"
+          aria-label={`Cantidad línea ${idx + 1}`}
+          {...register(`lines.${idx}.quantity`)}
+        />
+      </td>
+      <td className="py-1 pr-2">
+        <Input
+          inputMode="decimal"
+          aria-label={`Precio línea ${idx + 1}`}
+          {...register(`lines.${idx}.unitPrice`)}
+        />
+      </td>
+      <td
+        className="py-1 pr-2 text-right text-xs tabular-nums"
+        data-testid={`inv-line-margin-${idx}`}
+      >
+        {effectiveMargin === null ? '—' : `${effectiveMargin.toFixed(2)} %`}
+      </td>
+      <td className="py-1 pr-2">
+        <Input
+          inputMode="decimal"
+          aria-label={`Impuesto línea ${idx + 1}`}
+          {...register(`lines.${idx}.taxRate`)}
+        />
+      </td>
+      <td className="py-1 pr-2 text-right text-xs tabular-nums">{lineTotal.toFixed(4)}</td>
+      <td className="py-1 text-right">
+        {showRemove && (
+          <Button type="button" size="sm" variant="ghost" onClick={onRemove}>
+            🗑
+          </Button>
+        )}
+      </td>
+    </tr>
+  );
+}

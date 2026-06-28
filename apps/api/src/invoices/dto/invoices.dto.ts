@@ -9,6 +9,8 @@ export interface CreateInvoiceLineBody {
   quantity?: unknown;
   unitPrice?: unknown;
   taxRate?: unknown;
+  // PR-38 — nivel de precio aplicado (informativo, opcional).
+  priceListId?: unknown;
 }
 
 export interface ParsedCreateInvoiceLine {
@@ -17,6 +19,7 @@ export interface ParsedCreateInvoiceLine {
   quantity: string;
   unitPrice: string;
   taxRate: string;
+  priceListId: bigint | null;
 }
 
 export interface CreateInvoiceBody {
@@ -166,6 +169,7 @@ function parseLineBody(raw: unknown, idx: number): ParsedCreateInvoiceLine {
     quantity: positiveDecimal(r.quantity, `lines[${idx}].quantity`),
     unitPrice: nonNegativeDecimal(r.unitPrice, `lines[${idx}].unitPrice`),
     taxRate: r.taxRate === undefined ? '0' : nonNegativeDecimal(r.taxRate, `lines[${idx}].taxRate`),
+    priceListId: nullableBigInt(r.priceListId, `lines[${idx}].priceListId`),
   };
 }
 

@@ -19,6 +19,10 @@ interface Fixtures {
   product2AId: string;
   productServiceId: string;
   productBId: string;
+  // PR-38 — niveles seeded por empresa.
+  p1AId: string;
+  p2AId: string;
+  p1BId: string;
 }
 
 async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
@@ -129,6 +133,23 @@ async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
     data: { companyId: b.id, sku: 'SO-B-1', name: 'Producto SO B', uomId: uom.id },
   });
 
+  for (const co of [a, b]) {
+    for (const name of ['Precio 1', 'Precio 2', 'Precio 3']) {
+      await tc.raw.priceList.upsert({
+        where: { companyId_name: { companyId: co.id, name } },
+        update: {},
+        create: { companyId: co.id, name, currencyCode: co.currencyCode, listType: 'SALE' },
+      });
+    }
+  }
+  const listsA = await tc.raw.priceList.findMany({
+    where: { companyId: a.id, name: { in: ['Precio 1', 'Precio 2'] } },
+    orderBy: { name: 'asc' },
+  });
+  const listsB = await tc.raw.priceList.findMany({
+    where: { companyId: b.id, name: 'Precio 1' },
+  });
+
   return {
     companyAId: a.id,
     tokenA,
@@ -143,6 +164,9 @@ async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
     product2AId: product2A.id.toString(),
     productServiceId: productService.id.toString(),
     productBId: productB.id.toString(),
+    p1AId: listsA[0].id.toString(),
+    p2AId: listsA[1].id.toString(),
+    p1BId: listsB[0].id.toString(),
   };
 }
 
@@ -527,6 +551,103 @@ describe('Sales Orders (HU-10.2)', () => {
     it('sin token → 401', async () => {
       const res = await request(tc.app.getHttpServer()).get('/sales-orders');
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe('Nivel de precio por línea (PR-38)', () => {
+    it('persiste priceListId/priceListName en línea de OV', async () => {
+      const created = await request(tc.app.getHttpServer())
+        .post('/sales-orders')
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          customerId: fx.customerAId,
+          orderNumber: 'SO-PR38-1',
+          currencyCode: 'CRC',
+          lines: [
+            { productId: fx.productAId, quantity: '1', unitPrice: '100', priceListId: fx.p1AId },
+            { productId: fx.product2AId, quantity: '2', unitPrice: '180', priceListId: fx.p2AId },
+          ],
+        });
+      expect(created.status).toBe(201);
+      expect(created.body.lines[0]).toMatchObject({
+        priceListId: fx.p1AId,
+        priceListName: 'Precio 1',
+      });
+      expect(created.body.lines[1]).toMatchObject({
+        priceListId: fx.p2AId,
+        priceListName: 'Precio 2',
+      });
+    });
+
+    it('priceListId de otra empresa → 400', async () => {
+      const res = await request(tc.app.getHttpServer())
+        .post('/sales-orders')
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          customerId: fx.customerAId,
+          orderNumber: 'SO-PR38-2',
+          currencyCode: 'CRC',
+          lines: [
+            { productId: fx.productAId, quantity: '1', unitPrice: '50', priceListId: fx.p1BId },
+          ],
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/lista de precios/i);
+    });
+
+    it('priceListId opcional: línea sin nivel queda null', async () => {
+      const created = await request(tc.app.getHttpServer())
+        .post('/sales-orders')
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          customerId: fx.customerAId,
+          orderNumber: 'SO-PR38-3',
+          currencyCode: 'CRC',
+          lines: [{ productId: fx.productAId, quantity: '1', unitPrice: '50' }],
+        });
+      expect(created.status).toBe(201);
+      expect(created.body.lines[0].priceListId).toBeNull();
+      expect(created.body.lines[0].priceListName).toBeNull();
+    });
+
+    it('Cotización ACCEPTED → convert: propaga priceListId al sales_order_line', async () => {
+      // Crear cotización con priceListId en la línea.
+      const quote = await request(tc.app.getHttpServer())
+        .post('/quotations')
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          customerId: fx.customerAId,
+          quoteNumber: 'Q-PR38-PROP',
+          currencyCode: 'CRC',
+          lines: [
+            {
+              productId: fx.productAId,
+              quantity: '4',
+              unitPrice: '180',
+              priceListId: fx.p2AId,
+            },
+          ],
+        });
+      expect(quote.status).toBe(201);
+      // Pasar a ACCEPTED (DRAFT → SENT → ACCEPTED).
+      await request(tc.app.getHttpServer())
+        .post(`/quotations/${quote.body.id}/send`)
+        .set('Authorization', `Bearer ${fx.tokenA}`);
+      await request(tc.app.getHttpServer())
+        .post(`/quotations/${quote.body.id}/accept`)
+        .set('Authorization', `Bearer ${fx.tokenA}`);
+      // Convertir.
+      const conv = await request(tc.app.getHttpServer())
+        .post(`/quotations/${quote.body.id}/convert`)
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({ orderNumber: 'SO-FROM-Q-PR38' });
+      expect(conv.status).toBe(201);
+      expect(conv.body.salesOrder.lines[0]).toMatchObject({
+        priceListId: fx.p2AId,
+        priceListName: 'Precio 2',
+      });
+      // El precio acordado se respeta tal cual (no se recalcula).
+      expect(conv.body.salesOrder.lines[0].unitPrice).toBe('180');
     });
   });
 });

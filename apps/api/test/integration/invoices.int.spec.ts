@@ -21,6 +21,10 @@ interface Fixtures {
   product2AId: string;
   productServiceId: string;
   productBId: string;
+  // PR-38 — niveles seeded por empresa.
+  p1AId: string;
+  p2AId: string;
+  p1BId: string;
 }
 
 async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
@@ -137,6 +141,23 @@ async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
     data: { companyId: b.id, sku: 'INV-B-1', name: 'Producto INV B', uomId: uom.id },
   });
 
+  for (const co of [a, b]) {
+    for (const name of ['Precio 1', 'Precio 2', 'Precio 3']) {
+      await tc.raw.priceList.upsert({
+        where: { companyId_name: { companyId: co.id, name } },
+        update: {},
+        create: { companyId: co.id, name, currencyCode: co.currencyCode, listType: 'SALE' },
+      });
+    }
+  }
+  const listsA = await tc.raw.priceList.findMany({
+    where: { companyId: a.id, name: { in: ['Precio 1', 'Precio 2'] } },
+    orderBy: { name: 'asc' },
+  });
+  const listsB = await tc.raw.priceList.findMany({
+    where: { companyId: b.id, name: 'Precio 1' },
+  });
+
   return {
     companyAId: a.id,
     tokenA,
@@ -153,6 +174,9 @@ async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
     product2AId: product2A.id.toString(),
     productServiceId: productService.id.toString(),
     productBId: productB.id.toString(),
+    p1AId: listsA[0].id.toString(),
+    p2AId: listsA[1].id.toString(),
+    p1BId: listsB[0].id.toString(),
   };
 }
 
@@ -608,6 +632,68 @@ describe('Invoices (HU-10.3)', () => {
     it('sin token → 401', async () => {
       const res = await request(tc.app.getHttpServer()).get('/invoices');
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe('Nivel de precio por línea (PR-38)', () => {
+    it('persiste priceListId/priceListName en línea de factura emitida directa', async () => {
+      await seedStock(tc, fx.productAId, fx.warehouseAId, '50', '10');
+      const res = await request(tc.app.getHttpServer())
+        .post('/invoices')
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          customerId: fx.customerAId,
+          warehouseId: fx.warehouseAId,
+          invoiceNumber: 'INV-PR38-1',
+          currencyCode: 'CRC',
+          lines: [
+            {
+              productId: fx.productAId,
+              quantity: '2',
+              unitPrice: '180',
+              taxRate: '0',
+              priceListId: fx.p2AId,
+            },
+            {
+              productId: null,
+              description: 'Servicio libre',
+              quantity: '1',
+              unitPrice: '50',
+              taxRate: '0',
+            },
+          ],
+        });
+      expect(res.status).toBe(201);
+      expect(res.body.lines[0]).toMatchObject({
+        priceListId: fx.p2AId,
+        priceListName: 'Precio 2',
+      });
+      // Línea libre sin nivel.
+      expect(res.body.lines[1].priceListId).toBeNull();
+      expect(res.body.lines[1].priceListName).toBeNull();
+    });
+
+    it('priceListId de otra empresa → 400', async () => {
+      await seedStock(tc, fx.productAId, fx.warehouseAId, '50', '10');
+      const res = await request(tc.app.getHttpServer())
+        .post('/invoices')
+        .set('Authorization', `Bearer ${fx.tokenA}`)
+        .send({
+          customerId: fx.customerAId,
+          warehouseId: fx.warehouseAId,
+          invoiceNumber: 'INV-PR38-2',
+          currencyCode: 'CRC',
+          lines: [
+            {
+              productId: fx.productAId,
+              quantity: '1',
+              unitPrice: '10',
+              priceListId: fx.p1BId,
+            },
+          ],
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/lista de precios/i);
     });
   });
 });
