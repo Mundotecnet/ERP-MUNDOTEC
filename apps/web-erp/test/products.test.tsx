@@ -186,16 +186,18 @@ describe('ProductsPage — pestaña Precios 3 niveles (HU-11.2)', () => {
     await waitFor(() => screen.getByRole('heading', { name: /editar producto/i }));
     await user.click(screen.getByRole('button', { name: 'Precios' }));
     // Espera a que GET /products/1/pricing complete y rehidrate la tabla.
+    // El input de costo es MoneyInput → en blur muestra "100,00" (formato CR).
     await waitFor(() =>
-      expect((document.getElementById('pricing-cost') as HTMLInputElement)?.value).toBe('100'),
+      expect((document.getElementById('pricing-cost') as HTMLInputElement)?.value).toBe('100,00'),
     );
     return user;
   }
 
-  it('renderiza costo + margen mínimo (entero) + tabla con 3 niveles y badge agregado', async () => {
+  it('renderiza costo + margen mínimo (entero) + tabla con 3 niveles formateados estilo CR', async () => {
     await openPricingTab();
-    expect((document.getElementById('pricing-cost') as HTMLInputElement).value).toBe('100');
-    // 0.6 → entero 60 (UX en porcentaje entero).
+    // Cost y precios usan MoneyInput → display "100,00", "200,00", etc.
+    expect((document.getElementById('pricing-cost') as HTMLInputElement).value).toBe('100,00');
+    // 0.6 → entero 60 (UX en porcentaje entero). Margen no es MoneyInput.
     expect((document.getElementById('pricing-min-margin') as HTMLInputElement).value).toBe('60');
 
     // 3 filas en la tabla.
@@ -204,13 +206,14 @@ describe('ProductsPage — pestaña Precios 3 niveles (HU-11.2)', () => {
     expect(screen.getByTestId('pricing-level-row-1')).toBeInTheDocument();
     expect(screen.getByTestId('pricing-level-row-2')).toBeInTheDocument();
 
-    // Conversión fracción → entero por nivel.
+    // Conversión fracción → entero por nivel (margen sigue siendo Input simple).
     expect((document.getElementById('pricing-margin-0') as HTMLInputElement).value).toBe('50');
     expect((document.getElementById('pricing-margin-1') as HTMLInputElement).value).toBe('37.5');
     expect((document.getElementById('pricing-margin-2') as HTMLInputElement).value).toBe('66.67');
-    expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('200');
-    expect((document.getElementById('pricing-price-1') as HTMLInputElement).value).toBe('160');
-    expect((document.getElementById('pricing-price-2') as HTMLInputElement).value).toBe('300');
+    // Precios formateados estilo CR.
+    expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('200,00');
+    expect((document.getElementById('pricing-price-1') as HTMLInputElement).value).toBe('160,00');
+    expect((document.getElementById('pricing-price-2') as HTMLInputElement).value).toBe('300,00');
 
     // Badge agregado porque P1 y P2 están bajo el piso (60 %).
     expect(screen.getByTestId('out-of-margin-badge')).toBeInTheDocument();
@@ -236,35 +239,36 @@ describe('ProductsPage — pestaña Precios 3 niveles (HU-11.2)', () => {
     expect((document.getElementById('pricing-margin-2') as HTMLInputElement).value).toBe('66.67');
   });
 
-  it('editar margen en entero recalcula precio redondeado a 2 dec. 30 → price=142.86', async () => {
+  it('editar margen en entero recalcula precio redondeado a 2 dec. 30 → "142,86" en display', async () => {
     const user = await openPricingTab();
 
     const margin0 = document.getElementById('pricing-margin-0') as HTMLInputElement;
     await user.clear(margin0);
     await user.type(margin0, '30');
     // cost=100, margin=0.3 → price=142.8571 → redondeado a 142.86 (PR-35).
+    // El precio NO está focused → MoneyInput muestra "142,86" (formato CR).
     await waitFor(() =>
-      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('142.86'),
+      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('142,86'),
     );
   });
 
-  it('editar precio recalcula margen efectivo del precio redondeado (PR-35)', async () => {
+  it('editar precio recalcula margen efectivo del precio redondeado (PR-35/36 — formato CR)', async () => {
     const user = await openPricingTab();
 
-    // cost=100 (del fixture), tipear price=142.86 (ya redondeado) →
-    // margen efectivo = (142.86 - 100) / 142.86 = 0.29997 → entero "30".
+    // cost=100 (del fixture), tipear "142,86" (formato CR con coma decimal) →
+    // parseMoney → 142.86 → margen efectivo (142.86-100)/142.86 ≈ 0.30 → "30".
     const price0 = document.getElementById('pricing-price-0') as HTMLInputElement;
     await user.clear(price0);
-    await user.type(price0, '142.86');
+    await user.type(price0, '142,86');
     await waitFor(() =>
       expect((document.getElementById('pricing-margin-0') as HTMLInputElement).value).toBe('30'),
     );
 
-    // Si el usuario tipeara precio con más decimales (142.8571), el cliente
-    // lo redondea defensivamente para calcular el margen efectivo del precio
-    // que va a quedar guardado.
+    // Si el usuario tipea con más decimales ("142,8571"), el cliente redondea
+    // defensivamente el precio a 2 dec antes de calcular el margen efectivo,
+    // de modo que la UI muestra el margen del valor que va a quedar guardado.
     await user.clear(price0);
-    await user.type(price0, '142.8571');
+    await user.type(price0, '142,8571');
     await waitFor(() =>
       expect((document.getElementById('pricing-margin-0') as HTMLInputElement).value).toBe('30'),
     );
@@ -277,14 +281,14 @@ describe('ProductsPage — pestaña Precios 3 niveles (HU-11.2)', () => {
     await user.clear(cost);
     await user.type(cost, '200');
 
-    // P1 margin=0.5 → price=200/(1-0.5)=400
-    // P2 margin=0.375 → price=200/(1-0.375)=320
-    // P3 margin=0.6667 → price=200/(1-0.6667)≈600.06
+    // P1 margin=0.5 → price=200/(1-0.5)=400 → "400,00"
+    // P2 margin=0.375 → price=200/(1-0.375)=320 → "320,00"
+    // P3 margin=0.6667 → price=200/(1-0.6667)≈600.06 → "600,06"
     await waitFor(() =>
-      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('400'),
+      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('400,00'),
     );
-    expect((document.getElementById('pricing-price-1') as HTMLInputElement).value).toBe('320');
-    expect((document.getElementById('pricing-price-2') as HTMLInputElement).value).toBe('600.06');
+    expect((document.getElementById('pricing-price-1') as HTMLInputElement).value).toBe('320,00');
+    expect((document.getElementById('pricing-price-2') as HTMLInputElement).value).toBe('600,06');
   });
 
   it('al guardar envía PATCH con minMarginPct como fracción y levels[] convertidos', async () => {
@@ -305,6 +309,28 @@ describe('ProductsPage — pestaña Precios 3 niveles (HU-11.2)', () => {
         { priceListId: '13', salePrice: '300', marginPct: '0.6667' },
       ],
     });
+  });
+
+  it('PR-36 — tipear costo "1.500,75" en formato CR: display mantiene draft mientras focused, payload va canónico ("1500.75")', async () => {
+    vi.mocked(api.patch).mockResolvedValueOnce({ data: PRICING_A });
+    const user = await openPricingTab();
+    const cost = document.getElementById('pricing-cost') as HTMLInputElement;
+
+    await user.clear(cost);
+    await user.type(cost, '1.500,75');
+    // Mientras está focused, el value HTML es el draft tal como lo escribió
+    // el usuario (el componente no reformatea en vivo).
+    expect(cost.value).toBe('1.500,75');
+
+    // En blur (perdemos foco al hacer click en otro input) se reformatea.
+    await user.click(document.getElementById('pricing-min-margin') as HTMLInputElement);
+    await waitFor(() => expect(cost.value).toBe('1.500,75'));
+
+    // Guardar y verificar que el payload va con punto decimal canónico.
+    await user.click(screen.getByRole('button', { name: /guardar precios/i }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+    const [, body] = vi.mocked(api.patch).mock.calls[0];
+    expect((body as { costPrice: string }).costPrice).toBe('1500.75');
   });
 });
 
@@ -328,7 +354,7 @@ describe('ProductsPage — pestaña Precios en modo creación', () => {
     expect(screen.getByTestId('pricing-level-row-2')).toBeInTheDocument();
 
     // Recálculo local: cost=200, margen P1=25 (entero) → precio=266.6667
-    // → redondeado a 266.67 (PR-35).
+    // → redondeado a 266.67 (PR-35) → mostrado "266,67" (PR-36, formato CR).
     const cost = document.getElementById('pricing-cost') as HTMLInputElement;
     await user.clear(cost);
     await user.type(cost, '200');
@@ -336,7 +362,7 @@ describe('ProductsPage — pestaña Precios en modo creación', () => {
     await user.clear(margin0);
     await user.type(margin0, '25');
     await waitFor(() =>
-      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('266.67'),
+      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('266,67'),
     );
   });
 
@@ -382,8 +408,9 @@ describe('ProductsPage — pestaña Precios en modo creación', () => {
     const margin0 = document.getElementById('pricing-margin-0') as HTMLInputElement;
     await user.clear(margin0);
     await user.type(margin0, '30');
+    // PR-36: el precio no focused se muestra formateado estilo CR.
     await waitFor(() =>
-      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('214.29'),
+      expect((document.getElementById('pricing-price-0') as HTMLInputElement).value).toBe('214,29'),
     );
 
     // Completa General + guardar.
