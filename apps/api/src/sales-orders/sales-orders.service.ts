@@ -24,6 +24,9 @@ export interface SalesOrderLineView {
   discountRate: string;
   taxRate: string;
   lineTotal: string;
+  // PR-38 — nivel de precio aplicado (informativo, opcional).
+  priceListId: string | null;
+  priceListName: string | null;
 }
 
 export interface SalesOrderView {
@@ -88,7 +91,10 @@ export class SalesOrdersService {
         customer: { select: { legalName: true } },
         salesperson: { select: { fullName: true } },
         quotation: { select: { quoteNumber: true } },
-        lines: { include: { product: { select: { sku: true } } }, orderBy: { id: 'asc' } },
+        lines: {
+          include: { product: { select: { sku: true } }, priceList: { select: { name: true } } },
+          orderBy: { id: 'asc' },
+        },
       },
       orderBy: [{ orderDate: 'desc' }, { id: 'desc' }],
     });
@@ -102,7 +108,10 @@ export class SalesOrdersService {
         customer: { select: { legalName: true } },
         salesperson: { select: { fullName: true } },
         quotation: { select: { quoteNumber: true } },
-        lines: { include: { product: { select: { sku: true } } }, orderBy: { id: 'asc' } },
+        lines: {
+          include: { product: { select: { sku: true } }, priceList: { select: { name: true } } },
+          orderBy: { id: 'asc' },
+        },
       },
     });
     if (!row) throw new NotFoundException('Orden de venta no encontrada.');
@@ -143,6 +152,7 @@ export class SalesOrdersService {
       await this.assertSalesperson(tx, companyId, data.salespersonId);
     await this.assertCurrency(tx, data.currencyCode);
     await this.assertProducts(tx, companyId, data.lines);
+    await this.assertPriceLists(tx, companyId, data.lines);
 
     const totals = this.computeTotals(data.lines, exchangeRate);
     try {
@@ -173,6 +183,7 @@ export class SalesOrdersService {
               discountRate: line.discountRate,
               taxRate: line.taxRate,
               lineTotal: totals.lineTotals[idx],
+              priceListId: line.priceListId,
             })),
           },
         },
@@ -181,7 +192,10 @@ export class SalesOrdersService {
           salesperson: { select: { fullName: true } },
           quotation: { select: { quoteNumber: true } },
           lines: {
-            include: { product: { select: { sku: true } } },
+            include: {
+              product: { select: { sku: true } },
+              priceList: { select: { name: true } },
+            },
             orderBy: { id: 'asc' },
           },
         },
@@ -237,8 +251,12 @@ export class SalesOrdersService {
           unitPrice: l.unitPrice.toString(),
           discountRate: l.discountRate.toString(),
           taxRate: l.taxRate.toString(),
+          priceListId: l.priceListId,
         }));
-      if (data.lines !== undefined) await this.assertProducts(tx, companyId, linesParsed);
+      if (data.lines !== undefined) {
+        await this.assertProducts(tx, companyId, linesParsed);
+        await this.assertPriceLists(tx, companyId, linesParsed);
+      }
 
       const totals = this.computeTotals(linesParsed, exchangeRate);
 
@@ -273,6 +291,7 @@ export class SalesOrdersService {
                       discountRate: line.discountRate,
                       taxRate: line.taxRate,
                       lineTotal: totals.lineTotals[idx],
+                      priceListId: line.priceListId,
                     })),
                   },
                 }
@@ -283,7 +302,10 @@ export class SalesOrdersService {
             salesperson: { select: { fullName: true } },
             quotation: { select: { quoteNumber: true } },
             lines: {
-              include: { product: { select: { sku: true } } },
+              include: {
+                product: { select: { sku: true } },
+                priceList: { select: { name: true } },
+              },
               orderBy: { id: 'asc' },
             },
           },
@@ -341,7 +363,10 @@ export class SalesOrdersService {
           customer: { select: { legalName: true } },
           salesperson: { select: { fullName: true } },
           quotation: { select: { quoteNumber: true } },
-          lines: { include: { product: { select: { sku: true } } }, orderBy: { id: 'asc' } },
+          lines: {
+            include: { product: { select: { sku: true } }, priceList: { select: { name: true } } },
+            orderBy: { id: 'asc' },
+          },
         },
       });
       return this.toView(updated);
@@ -489,6 +514,33 @@ export class SalesOrdersService {
     }
   }
 
+  /**
+   * PR-38 — valida que cada priceListId enviado pertenezca al tenant y sea
+   * lista activa de tipo SALE. NULL ignorado.
+   */
+  private async assertPriceLists(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    lines: ParsedCreateSoLine[],
+  ): Promise<void> {
+    const ids = Array.from(
+      new Set(lines.filter((l) => l.priceListId !== null).map((l) => l.priceListId as bigint)),
+    );
+    if (ids.length === 0) return;
+    const lists = await tx.priceList.findMany({
+      where: { id: { in: ids }, companyId, listType: 'SALE' },
+      select: { id: true },
+    });
+    const map = new Map(lists.map((l) => [l.id.toString(), l]));
+    for (const id of ids) {
+      if (!map.has(id.toString())) {
+        throw new BadRequestException(
+          `Lista de precios ${id.toString()} no existe, no pertenece a esta empresa o no es de venta.`,
+        );
+      }
+    }
+  }
+
   private translatePrismaError(err: unknown): never {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       throw new ConflictException('Ya existe una orden de venta con ese número en esta empresa.');
@@ -529,7 +581,9 @@ export class SalesOrdersService {
       discountRate: Prisma.Decimal;
       taxRate: Prisma.Decimal;
       lineTotal: Prisma.Decimal;
+      priceListId: bigint | null;
       product: { sku: string };
+      priceList: { name: string } | null;
     }>;
   }): SalesOrderView {
     return {
@@ -566,6 +620,8 @@ export class SalesOrdersService {
         discountRate: l.discountRate.toString(),
         taxRate: l.taxRate.toString(),
         lineTotal: l.lineTotal.toString(),
+        priceListId: l.priceListId?.toString() ?? null,
+        priceListName: l.priceList?.name ?? null,
       })),
     };
   }

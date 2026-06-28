@@ -401,6 +401,8 @@ export class QuotationsService {
             unitPrice: l.unitPrice.toString(),
             discountRate: l.discountRate.toString(),
             taxRate: l.taxRate.toString(),
+            // PR-38 — propaga el nivel de precio de la línea de cotización.
+            priceListId: l.priceListId,
           })),
         },
         { quotationId: quote.id },

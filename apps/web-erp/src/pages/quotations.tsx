@@ -1029,26 +1029,23 @@ function LineRow(props: {
 
   // 1) Default a Precio 1 cuando llega pricing y la línea no tiene nivel.
   React.useEffect(() => {
-    if (!pricingQ.data || priceListId) return;
+    // Guard: el mock por defecto en tests devuelve {data:[]} para URLs no
+    // mockeadas; .levels[] crashearía sin el `?.levels` defensivo.
+    if (!pricingQ.data?.levels || priceListId) return;
     const first = pricingQ.data.levels[0];
     if (!first) return;
     setValue(`lines.${idx}.priceListId`, first.priceListId, { shouldDirty: true });
     setValue(`lines.${idx}.unitPrice`, first.salePrice, { shouldDirty: true });
-    // Intencionalmente solo depende de la respuesta del server: idx/setValue
-    // tienen identidad estable; priceListId aparece en el guard, no como dep
-    // para no re-ejecutar al setearla acá mismo.
   }, [pricingQ.data, productId]);
 
   // 2) Cuando el usuario cambia el nivel, autocompleta el precio.
   React.useEffect(() => {
-    if (!pricingQ.data || !priceListId) return;
+    if (!pricingQ.data?.levels || !priceListId) return;
     const lvl = pricingQ.data.levels.find((l) => l.priceListId === priceListId);
     if (!lvl) return;
     if (unitPriceStr !== lvl.salePrice) {
       setValue(`lines.${idx}.unitPrice`, lvl.salePrice, { shouldDirty: true });
     }
-    // No incluimos unitPriceStr en deps: queremos disparar solo cuando cambia
-    // el nivel o el pricing del producto, no cada vez que el usuario tipea precio.
   }, [pricingQ.data, priceListId]);
 
   const q = parseFloat(quantityStr || '0');

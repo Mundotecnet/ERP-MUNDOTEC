@@ -1996,5 +1996,19 @@ ALTER TABLE quotation_line
 CREATE INDEX idx_quoteline_pricelist ON quotation_line(price_list_id);
 
 -- ============================================================================
+-- 24. PRECIOS — nivel propagado en OV y Factura (PR-38, HU-11.4)
+-- ============================================================================
+-- Mismo campo que en quotation_line: nullable, informativo/auditoría. El
+-- precio acordado (`unit_price`) NO se recalcula al convertir cotización→OV
+-- ni OV→Factura; el nivel viaja solo como referencia/trazabilidad.
+ALTER TABLE sales_order_line
+    ADD COLUMN price_list_id BIGINT REFERENCES price_list(id);
+CREATE INDEX idx_soline_pricelist ON sales_order_line(price_list_id);
+
+ALTER TABLE invoice_line
+    ADD COLUMN price_list_id BIGINT REFERENCES price_list(id);
+CREATE INDEX idx_invline_pricelist ON invoice_line(price_list_id);
+
+-- ============================================================================
 -- FIN DEL ESQUEMA
 -- ============================================================================

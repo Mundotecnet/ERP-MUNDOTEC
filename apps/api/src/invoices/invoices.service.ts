@@ -24,6 +24,9 @@ export interface InvoiceLineView {
   unitPrice: string;
   taxRate: string;
   lineTotal: string;
+  // PR-38 — nivel de precio aplicado (informativo, opcional).
+  priceListId: string | null;
+  priceListName: string | null;
 }
 
 export interface InvoiceView {
@@ -82,7 +85,10 @@ export class InvoicesService {
         customer: { select: { legalName: true } },
         salesperson: { select: { fullName: true } },
         salesOrder: { select: { orderNumber: true } },
-        lines: { include: { product: { select: { sku: true } } }, orderBy: { id: 'asc' } },
+        lines: {
+          include: { product: { select: { sku: true } }, priceList: { select: { name: true } } },
+          orderBy: { id: 'asc' },
+        },
       },
       orderBy: [{ invoiceDate: 'desc' }, { id: 'desc' }],
     });
@@ -96,7 +102,10 @@ export class InvoicesService {
         customer: { select: { legalName: true } },
         salesperson: { select: { fullName: true } },
         salesOrder: { select: { orderNumber: true } },
-        lines: { include: { product: { select: { sku: true } } }, orderBy: { id: 'asc' } },
+        lines: {
+          include: { product: { select: { sku: true } }, priceList: { select: { name: true } } },
+          orderBy: { id: 'asc' },
+        },
       },
     });
     if (!row) throw new NotFoundException('Factura no encontrada.');
@@ -131,6 +140,7 @@ export class InvoicesService {
       await this.assertCurrency(tx, data.currencyCode);
       const warehouse = await this.assertWarehouse(tx, companyId, data.warehouseId);
       await this.assertProducts(tx, companyId, data.lines);
+      await this.assertPriceLists(tx, companyId, data.lines);
 
       // Si trae salesOrderId, debe ser CONFIRMED y mismo cliente.
       let salesOrder: { id: bigint; status: string; customerId: bigint; companyId: bigint } | null =
@@ -192,6 +202,7 @@ export class InvoicesService {
                 unitPrice: line.unitPrice,
                 taxRate: line.taxRate,
                 lineTotal: totals.lineTotals[idx],
+                priceListId: line.priceListId,
               })),
             },
           },
@@ -200,7 +211,10 @@ export class InvoicesService {
             salesperson: { select: { fullName: true } },
             salesOrder: { select: { orderNumber: true } },
             lines: {
-              include: { product: { select: { sku: true } } },
+              include: {
+                product: { select: { sku: true } },
+                priceList: { select: { name: true } },
+              },
               orderBy: { id: 'asc' },
             },
           },
@@ -262,7 +276,10 @@ export class InvoicesService {
           customer: { select: { legalName: true } },
           salesperson: { select: { fullName: true } },
           salesOrder: { select: { orderNumber: true } },
-          lines: { include: { product: { select: { sku: true } } }, orderBy: { id: 'asc' } },
+          lines: {
+            include: { product: { select: { sku: true } }, priceList: { select: { name: true } } },
+            orderBy: { id: 'asc' },
+          },
         },
       });
       return this.toView(updated);
@@ -423,6 +440,33 @@ export class InvoicesService {
     }
   }
 
+  /**
+   * PR-38 — valida que cada priceListId enviado pertenezca al tenant y sea
+   * lista activa de tipo SALE. NULL ignorado.
+   */
+  private async assertPriceLists(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    lines: ParsedCreateInvoiceLine[],
+  ): Promise<void> {
+    const ids = Array.from(
+      new Set(lines.filter((l) => l.priceListId !== null).map((l) => l.priceListId as bigint)),
+    );
+    if (ids.length === 0) return;
+    const lists = await tx.priceList.findMany({
+      where: { id: { in: ids }, companyId, listType: 'SALE' },
+      select: { id: true },
+    });
+    const map = new Map(lists.map((l) => [l.id.toString(), l]));
+    for (const id of ids) {
+      if (!map.has(id.toString())) {
+        throw new BadRequestException(
+          `Lista de precios ${id.toString()} no existe, no pertenece a esta empresa o no es de venta.`,
+        );
+      }
+    }
+  }
+
   private translatePrismaError(err: unknown): never {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       throw new ConflictException('Ya existe una factura con ese número en esta empresa.');
@@ -461,7 +505,9 @@ export class InvoicesService {
       unitPrice: Prisma.Decimal;
       taxRate: Prisma.Decimal;
       lineTotal: Prisma.Decimal;
+      priceListId: bigint | null;
       product: { sku: string } | null;
+      priceList: { name: string } | null;
     }>;
   }): InvoiceView {
     return {
@@ -496,6 +542,8 @@ export class InvoicesService {
         unitPrice: l.unitPrice.toString(),
         taxRate: l.taxRate.toString(),
         lineTotal: l.lineTotal.toString(),
+        priceListId: l.priceListId?.toString() ?? null,
+        priceListName: l.priceList?.name ?? null,
       })),
     };
   }

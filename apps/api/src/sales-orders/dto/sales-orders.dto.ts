@@ -9,6 +9,8 @@ export interface CreateSoLineBody {
   unitPrice?: unknown;
   discountRate?: unknown;
   taxRate?: unknown;
+  // PR-38 — nivel de precio aplicado (informativo, opcional).
+  priceListId?: unknown;
 }
 
 export interface ParsedCreateSoLine {
@@ -17,6 +19,7 @@ export interface ParsedCreateSoLine {
   unitPrice: string;
   discountRate: string;
   taxRate: string;
+  priceListId: bigint | null;
 }
 
 export interface CreateSalesOrderBody {
@@ -190,6 +193,7 @@ function parseLineBody(raw: unknown, idx: number): ParsedCreateSoLine {
         ? '0'
         : rateLessThanOne(r.discountRate, `lines[${idx}].discountRate`),
     taxRate: r.taxRate === undefined ? '0' : nonNegativeDecimal(r.taxRate, `lines[${idx}].taxRate`),
+    priceListId: nullableBigInt(r.priceListId, `lines[${idx}].priceListId`),
   };
 }
 
