@@ -154,7 +154,9 @@ CREATE INDEX idx_reset_user ON password_reset_token(user_id);
 CREATE TABLE currency (
     code            CHAR(3) PRIMARY KEY,
     name            VARCHAR(60) NOT NULL,
-    symbol          VARCHAR(6)
+    symbol          VARCHAR(6),
+    decimals        INT     NOT NULL DEFAULT 2 CHECK (decimals BETWEEN 0 AND 6),
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE TABLE exchange_rate (
@@ -176,7 +178,8 @@ CREATE TABLE tax (
 CREATE TABLE unit_of_measure (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     code            VARCHAR(10) NOT NULL UNIQUE,            -- PZA, KG, LT, CAJA
-    name            VARCHAR(60) NOT NULL
+    name            VARCHAR(60) NOT NULL,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 -- ============================================================================

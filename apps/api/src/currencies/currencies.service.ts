@@ -8,6 +8,16 @@ export interface CurrencyView {
   code: string;
   name: string;
   symbol: string | null;
+  decimals: number;
+  isActive: boolean;
+}
+
+interface CurrencyRow {
+  code: string;
+  name: string;
+  symbol: string | null;
+  decimals: number;
+  isActive: boolean;
 }
 
 @Injectable()
@@ -45,14 +55,16 @@ export class CurrenciesService {
   async remove(code: string): Promise<void> {
     const existing = await this.prisma.raw.currency.findUnique({ where: { code } });
     if (!existing) throw new NotFoundException('Moneda no encontrada.');
-    const [usedAsBase, exchangeCount] = await Promise.all([
+    const [usedAsBase, exchangeCount, priceListCount] = await Promise.all([
       this.prisma.raw.company.count({ where: { currencyCode: code } }),
       this.prisma.raw.exchangeRate.count({ where: { currencyCode: code } }),
+      this.prisma.raw.priceList.count({ where: { currencyCode: code } }),
     ]);
-    if (usedAsBase > 0 || exchangeCount > 0) {
+    if (usedAsBase > 0 || exchangeCount > 0 || priceListCount > 0) {
       throw new ConflictException(
         `No se puede eliminar la moneda ${code}: está en uso por ` +
-          `${usedAsBase} empresa(s) y ${exchangeCount} tipo(s) de cambio.`,
+          `${usedAsBase} empresa(s), ${exchangeCount} tipo(s) de cambio y ` +
+          `${priceListCount} lista(s) de precios.`,
       );
     }
     await this.prisma.raw.currency.delete({ where: { code } });
@@ -64,7 +76,13 @@ export class CurrenciesService {
     }
   }
 
-  private toView(row: { code: string; name: string; symbol: string | null }): CurrencyView {
-    return { code: row.code, name: row.name, symbol: row.symbol };
+  private toView(row: CurrencyRow): CurrencyView {
+    return {
+      code: row.code,
+      name: row.name,
+      symbol: row.symbol,
+      decimals: row.decimals,
+      isActive: row.isActive,
+    };
   }
 }

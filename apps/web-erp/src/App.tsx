@@ -5,10 +5,12 @@ import { Shell } from '@/layout/shell';
 import { BranchesPage } from '@/pages/branches';
 import { CurrenciesPage } from '@/pages/currencies';
 import { DashboardPage } from '@/pages/dashboard';
+import { DepartmentsPage } from '@/pages/departments';
 import { InvoicesPage } from '@/pages/invoices';
 import { LoginPage } from '@/pages/login';
 import { MovementsPage } from '@/pages/movements';
 import { PartnersPage } from '@/pages/partners';
+import { ProductCategoriesPage } from '@/pages/product-categories';
 import { ProductsPage } from '@/pages/products';
 import { PurchaseOrdersPage } from '@/pages/purchase-orders';
 import { QuotationsPage } from '@/pages/quotations';
@@ -17,6 +19,8 @@ import { RolesPage } from '@/pages/roles';
 import { SalesOrdersPage } from '@/pages/sales-orders';
 import { SettingsPage } from '@/pages/settings';
 import { StockPage } from '@/pages/stock';
+import { TaxesPage } from '@/pages/taxes';
+import { UnitsOfMeasurePage } from '@/pages/units-of-measure';
 import { UsersPage } from '@/pages/users';
 
 export default function App(): JSX.Element {
@@ -101,7 +105,46 @@ export default function App(): JSX.Element {
           <Route path="branches" element={<BranchesPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="roles" element={<RolesPage />} />
-          <Route path="currencies" element={<CurrenciesPage />} />
+          <Route
+            path="product-categories"
+            element={
+              <ProtectedRoute permission="catalogs.product-category.read">
+                <ProductCategoriesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="departments"
+            element={
+              <ProtectedRoute permission="catalogs.department.read">
+                <DepartmentsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="units-of-measure"
+            element={
+              <ProtectedRoute permission="catalogs.uom.read">
+                <UnitsOfMeasurePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="taxes"
+            element={
+              <ProtectedRoute permission="catalogs.tax.read">
+                <TaxesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="currencies"
+            element={
+              <ProtectedRoute permission="catalogs.currency.read">
+                <CurrenciesPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>
