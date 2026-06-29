@@ -331,13 +331,23 @@ async function seedAdminRole(companyId: bigint): Promise<bigint> {
     },
   });
 
+  // El rol admin queda con TODOS los permisos definidos en PERMISSIONS:
+  // tras agregar permisos nuevos, basta re-correr el seed y `createMany`
+  // (skipDuplicates) asigna solo los que falten. No retira los que el rol
+  // ya tenía y dejaron de estar en el array.
   const allPermissions = await prisma.permission.findMany({ select: { id: true } });
+  const before = await prisma.rolePermission.count({ where: { roleId: role.id } });
   await prisma.rolePermission.createMany({
     data: allPermissions.map((p) => ({ roleId: role.id, permissionId: p.id })),
     skipDuplicates: true,
   });
+  const after = await prisma.rolePermission.count({ where: { roleId: role.id } });
+  const newlyAssigned = after - before;
 
-  console.log(`  ✓ rol admin (id ${role.id}) con ${allPermissions.length} permisos`);
+  console.log(
+    `  ✓ rol admin (id ${role.id}) con ${after}/${allPermissions.length} permisos asignados` +
+      (newlyAssigned > 0 ? ` (+${newlyAssigned} nuevos en esta corrida)` : ''),
+  );
   return role.id;
 }
 
