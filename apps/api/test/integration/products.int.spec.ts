@@ -121,6 +121,20 @@ async function seedFixtures(tc: AppTestContext): Promise<Fixtures> {
     data: { companyId: a.id, name: 'Bodega' },
   });
 
+  // PR-34+: en producción las 3 listas P1/P2/P3 se autoseedean por empresa.
+  // En tests las precreamos para que el primer POST /products no tenga que
+  // upsertarlas en concurrencia (race en `priceList.upsert` durante alta
+  // concurrencia, ver test SKU automático PR-39).
+  for (const co of [a, b]) {
+    for (const name of ['Precio 1', 'Precio 2', 'Precio 3']) {
+      await tc.raw.priceList.upsert({
+        where: { companyId_name: { companyId: co.id, name } },
+        update: {},
+        create: { companyId: co.id, name, currencyCode: co.currencyCode, listType: 'SALE' },
+      });
+    }
+  }
+
   return {
     companyAId: a.id,
     companyBId: b.id,
@@ -151,12 +165,12 @@ describe('Productos (HU-7.1)', () => {
   describe('CRUD', () => {
     let productId: string;
 
-    it('POST /products crea con todos los campos requeridos', async () => {
+    it('POST /products crea con SKU 100000 auto-asignado (PR-39)', async () => {
       const res = await request(tc.app.getHttpServer())
         .post('/products')
         .set('Authorization', `Bearer ${fx.tokenA}`)
         .send({
-          sku: 'SKU-001',
+          // PR-39: NO se envía SKU desde el cliente.
           barcode: '7501234567890',
           name: 'Switch 24 puertos',
           description: 'Gigabit administrable',
@@ -172,7 +186,7 @@ describe('Productos (HU-7.1)', () => {
         });
       expect(res.status).toBe(201);
       expect(res.body).toMatchObject({
-        sku: 'SKU-001',
+        sku: '100000',
         name: 'Switch 24 puertos',
         trackingType: 'SERIAL',
         warrantyMonths: 12,
@@ -184,16 +198,18 @@ describe('Productos (HU-7.1)', () => {
       productId = res.body.id;
     });
 
-    it('POST /products usa defaults cuando faltan opcionales', async () => {
+    it('POST /products siguiente correlativo = 100001 + ignora SKU enviado por el cliente', async () => {
       const res = await request(tc.app.getHttpServer())
         .post('/products')
         .set('Authorization', `Bearer ${fx.tokenA}`)
         .send({
-          sku: 'SKU-DEFAULTS',
+          // El cliente intenta forzar un SKU; el server lo ignora.
+          sku: 'CLIENT-FORCED-SKU',
           name: 'Producto con defaults',
           uomId: fx.uomGlobalId,
         });
       expect(res.status).toBe(201);
+      expect(res.body.sku).toBe('100001');
       expect(res.body).toMatchObject({
         trackingType: 'NONE',
         priceCurrency: 'USD',
@@ -207,36 +223,29 @@ describe('Productos (HU-7.1)', () => {
       });
     });
 
-    it('POST /products devuelve 409 con SKU duplicado en la misma empresa', async () => {
-      const res = await request(tc.app.getHttpServer())
-        .post('/products')
-        .set('Authorization', `Bearer ${fx.tokenA}`)
-        .send({ sku: 'SKU-001', name: 'Duplicado', uomId: fx.uomGlobalId });
-      expect(res.status).toBe(409);
-    });
-
-    it('POST /products permite el mismo SKU en empresa distinta', async () => {
+    it('POST /products en empresa distinta arranca su propia secuencia en 100000', async () => {
       const res = await request(tc.app.getHttpServer())
         .post('/products')
         .set('Authorization', `Bearer ${fx.tokenB}`)
-        .send({ sku: 'SKU-001', name: 'Otra empresa mismo SKU', uomId: fx.uomGlobalId });
+        .send({ name: 'Otra empresa primer producto', uomId: fx.uomGlobalId });
       expect(res.status).toBe(201);
+      expect(res.body.sku).toBe('100000');
     });
 
-    it('GET /products lista solo los de la empresa del usuario', async () => {
+    it('GET /products lista solo los de la empresa del usuario (con SKUs autoasignados)', async () => {
       const resA = await request(tc.app.getHttpServer())
         .get('/products')
         .set('Authorization', `Bearer ${fx.tokenA}`);
       expect(resA.status).toBe(200);
       expect(resA.body.map((p: { sku: string }) => p.sku).sort()).toEqual(
-        ['SKU-001', 'SKU-DEFAULTS'].sort(),
+        ['100000', '100001'].sort(),
       );
 
       const resB = await request(tc.app.getHttpServer())
         .get('/products')
         .set('Authorization', `Bearer ${fx.tokenB}`);
       expect(resB.status).toBe(200);
-      expect(resB.body.map((p: { sku: string }) => p.sku)).toEqual(['SKU-001']);
+      expect(resB.body.map((p: { sku: string }) => p.sku)).toEqual(['100000']);
     });
 
     it('GET /products/:id devuelve 404 si el id es de otra empresa', async () => {
@@ -281,7 +290,7 @@ describe('Productos (HU-7.1)', () => {
         .post('/products')
         .set('Authorization', `Bearer ${fx.tokenA}`)
         .send({
-          sku: 'SKU-BAD-CAT',
+          // PR-39: sku enviado se ignora; el server asigna automático.
           name: 'Cross tenant',
           uomId: fx.uomGlobalId,
           categoryId: fx.categoryBId,
@@ -294,7 +303,11 @@ describe('Productos (HU-7.1)', () => {
       const res = await request(tc.app.getHttpServer())
         .post('/products')
         .set('Authorization', `Bearer ${fx.tokenA}`)
-        .send({ sku: 'SKU-BAD-UOM', name: 'Sin UoM', uomId: '999999' });
+        .send({
+          // PR-39: sku enviado se ignora.
+          name: 'Sin UoM',
+          uomId: '999999',
+        });
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/unidad/i);
     });
@@ -304,7 +317,7 @@ describe('Productos (HU-7.1)', () => {
         .post('/products')
         .set('Authorization', `Bearer ${fx.tokenA}`)
         .send({
-          sku: 'SKU-BAD-TT',
+          // PR-39: sku enviado se ignora.
           name: 'Tracking malo',
           uomId: fx.uomGlobalId,
           trackingType: 'BATCH',
@@ -318,7 +331,7 @@ describe('Productos (HU-7.1)', () => {
         .post('/products')
         .set('Authorization', `Bearer ${fx.tokenA}`)
         .send({
-          sku: 'SKU-BAD-CUR',
+          // PR-39: sku enviado se ignora.
           name: 'Moneda mala',
           uomId: fx.uomGlobalId,
           priceCurrency: 'XYZ',
@@ -332,7 +345,7 @@ describe('Productos (HU-7.1)', () => {
         .post('/products')
         .set('Authorization', `Bearer ${fx.tokenA}`)
         .send({
-          sku: 'SKU-BAD-DEC',
+          // PR-39: sku enviado se ignora.
           name: 'Demasiados decimales',
           uomId: fx.uomGlobalId,
           costPrice: '10.123456',
@@ -352,7 +365,11 @@ describe('Productos (HU-7.1)', () => {
       const res = await request(tc.app.getHttpServer())
         .post('/products')
         .set('Authorization', `Bearer ${fx.tokenReadOnly}`)
-        .send({ sku: 'SKU-NO-PERM', name: 'Sin permiso', uomId: fx.uomGlobalId });
+        .send({
+          // PR-39: sku enviado se ignora.
+          name: 'Sin permiso',
+          uomId: fx.uomGlobalId,
+        });
       expect(res.status).toBe(403);
     });
 
@@ -361,6 +378,54 @@ describe('Productos (HU-7.1)', () => {
         .get('/products')
         .set('Authorization', `Bearer ${fx.tokenReadOnly}`);
       expect(res.status).toBe(200);
+    });
+  });
+
+  describe('SKU automático — concurrencia (PR-39)', () => {
+    it('15 create concurrentes en la misma empresa producen 15 SKUs únicos sin gaps', async () => {
+      // Tras el follow-up del PR-39 (reserveProductSku en autocommit, fuera
+      // de la tx interactiva), 15 creates concurrentes ya no saturan el pool.
+      // Antes esto fallaba con P2024 (timeout fetching connection) porque
+      // cada tx retenía 2 conexiones simultáneas (la tx + el audit_log
+      // write desde rawClient). Llamamos al service directo para que las
+      // excepciones se vean en el test, no escondidas tras un 500 de Nest.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { ProductsService } = require('../../src/products/products.service');
+      const svc = tc.app.get(ProductsService) as InstanceType<typeof ProductsService>;
+      const uomId = BigInt(fx.uomGlobalId);
+      const N = 15;
+      const results = await Promise.allSettled(
+        Array.from({ length: N }, (_, i) =>
+          svc.create(fx.companyAId, {
+            barcode: null,
+            name: `Concurrent ${i}`,
+            description: null,
+            categoryId: null,
+            uomId,
+            taxId: null,
+            costPrice: '0',
+            salePrice: '0',
+            priceCurrency: 'USD',
+            isInventoried: true,
+            trackingType: 'NONE' as const,
+            warrantyMonths: 0,
+            minStock: '0',
+            maxStock: '0',
+            isActive: true,
+            departmentId: null,
+          }),
+        ),
+      );
+      const rejected = results.filter((r) => r.status === 'rejected');
+      expect(rejected).toEqual([]);
+
+      const skus = (results as PromiseFulfilledResult<{ sku: string }>[]).map((r) => r.value.sku);
+      const unique = new Set(skus);
+      expect(unique.size).toBe(N);
+      const sorted = skus.map((s) => Number(s)).sort((a, b) => a - b);
+      for (let i = 1; i < sorted.length; i++) {
+        expect(sorted[i]).toBe(sorted[i - 1] + 1);
+      }
     });
   });
 });
