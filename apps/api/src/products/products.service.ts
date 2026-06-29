@@ -93,29 +93,32 @@ export class ProductsService {
       departmentId: data.departmentId,
       priceCurrency: data.priceCurrency,
     });
-    // PR-39: asegura que la fila de secuencia exista ANTES de abrir la tx
-    // interactiva. El INSERT en autocommit es idempotente (ON CONFLICT DO
-    // NOTHING) y evita un race entre transacciones concurrentes intentando
-    // crear la misma fila desde adentro de sus propias tx.
+    // PR-39 + follow-up: asegura la fila de secuencia y RESERVA el SKU FUERA
+    // de la tx interactiva, ambas con autocommit.
+    //
+    // - `ensureSkuSequenceRow` es un INSERT ON CONFLICT DO NOTHING idempotente.
+    // - `reserveProductSku` es un UPDATE ... RETURNING atómico. Postgres
+    //   aplica un row-lock implícito mientras dura el statement; en autocommit
+    //   el lock se libera inmediatamente al terminar el query (no se sostiene
+    //   hasta el final de la tx principal).
+    //
+    // Si la tx principal falla, el SKU asignado queda "saltado" en la
+    // secuencia. Aceptable porque el SKU no es un número fiscal regulado.
+    //
+    // Beneficio: bajo concurrencia (N POST simultáneos sobre la misma empresa),
+    // las N tx interactivas ya no se serializan sobre el row-lock de la
+    // secuencia + audit_log writes concurrentes — antes saturaba el connection
+    // pool (timeout P2024). Ver fix/audit-tx-pool / discusión en PR.
     await this.ensureSkuSequenceRow(companyId);
+    const sku = await this.reserveProductSku(companyId);
     try {
-      // PR-34/39: la asignación atómica del SKU, la creación del producto
-      // y el seed de sus 3 price_list_item viven en una sola transacción.
-      // PR-39: timeout extendido a 20s para tolerar alta concurrencia. El
-      // row-lock del UPDATE de la secuencia serializa transacciones sobre
-      // la misma (empresa, tipo); el default de 5s puede no alcanzar
-      // cuando llegan ~10 POST en paralelo sobre la misma empresa.
-      return await this.prisma.client.$transaction(
-        async (tx) => {
-          const sku = await this.nextProductSku(tx, companyId);
-          const row = await tx.product.create({
-            data: { companyId, sku, ...data, updatedAt: new Date() },
-          });
-          await this.pricing.ensureProductPriceLevels(tx, companyId, row.id);
-          return this.toView(row);
-        },
-        { timeout: 20_000 },
-      );
+      return await this.prisma.client.$transaction(async (tx) => {
+        const row = await tx.product.create({
+          data: { companyId, sku, ...data, updatedAt: new Date() },
+        });
+        await this.pricing.ensureProductPriceLevels(tx, companyId, row.id);
+        return this.toView(row);
+      });
     } catch (err) {
       this.translatePrismaError(err);
     }
@@ -123,9 +126,8 @@ export class ProductsService {
 
   /**
    * PR-39 — inicializa la fila de secuencia PRODUCT_SKU para la empresa
-   * arrancando en 100000. Idempotente (ON CONFLICT DO NOTHING). Se ejecuta
-   * fuera de la transacción de creación para evitar que dos POST
-   * concurrentes se peleen por insertarla y queden bloqueados o aborten.
+   * arrancando en 100000. Idempotente (ON CONFLICT DO NOTHING). Autocommit:
+   * la fila queda persistida apenas termine el statement.
    */
   private async ensureSkuSequenceRow(companyId: bigint): Promise<void> {
     await this.prisma.client.$executeRaw`
@@ -136,19 +138,22 @@ export class ProductsService {
   }
 
   /**
-   * PR-39 — asigna el siguiente SKU automático para la empresa.
+   * PR-39 — reserva el siguiente SKU autoincremental para la empresa.
    *
    * Patrón atómico: `UPDATE ... SET next_value = next_value + 1 ... RETURNING
    * next_value - 1`. Postgres adquiere un row-lock implícito sobre la fila
-   * actualizada hasta el COMMIT/ROLLBACK, serializando concurrentes sobre
-   * la misma (empresa, tipo). Nunca usar MAX(sku)+1: en alta concurrencia
-   * dos tx leerían el mismo MAX y duplicarían.
+   * actualizada **mientras dura el statement**; en autocommit el lock se
+   * libera al terminar el UPDATE, no se sostiene hasta el final de la tx
+   * principal del producto. Esto elimina la presión sobre el pool de
+   * conexiones cuando hay N POST concurrentes sobre la misma empresa.
    *
-   * Requiere que `ensureSkuSequenceRow(companyId)` ya haya corrido (lo hace
-   * `create` antes de abrir la tx interactiva).
+   * Nunca usar MAX(sku)+1: en alta concurrencia dos tx leerían el mismo MAX y
+   * duplicarían.
+   *
+   * Requiere que `ensureSkuSequenceRow(companyId)` ya haya corrido.
    */
-  private async nextProductSku(tx: Prisma.TransactionClient, companyId: bigint): Promise<string> {
-    const rows = await tx.$queryRaw<{ assigned: bigint }[]>`
+  private async reserveProductSku(companyId: bigint): Promise<string> {
+    const rows = await this.prisma.client.$queryRaw<{ assigned: bigint }[]>`
       UPDATE "document_sequence"
          SET "next_value" = "next_value" + 1,
              "updated_at" = now()

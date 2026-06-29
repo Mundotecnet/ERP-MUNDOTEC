@@ -7,6 +7,19 @@ import { buildSoftDeleteExtension } from './extensions/soft-delete.extension';
 import { buildTenantExtension } from './extensions/tenant.extension';
 
 /**
+ * Devuelve la DATABASE_URL recibida con `connection_limit=N` añadido si no
+ * estaba presente. Si ya tiene un connection_limit propio (operador subió la
+ * env explícitamente) lo respetamos. Si la env no viene, devolvemos undefined
+ * y Prisma usa su default de variables de entorno habitual.
+ */
+function appendConnectionLimit(url: string | undefined, limit: number): string | undefined {
+  if (!url) return undefined;
+  if (url.includes('connection_limit=')) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}connection_limit=${limit}`;
+}
+
+/**
  * Cliente Prisma con las extensiones aplicadas. Las extensiones no añaden
  * métodos a los delegates (solo cambian el comportamiento de los existentes),
  * así que tiparlo como `PrismaClient` es seguro y mantiene la DX habitual en
@@ -28,7 +41,20 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private extendedClient: ExtendedPrismaClient | null = null;
 
   constructor(private readonly ctx: RequestContextService) {
-    this.rawClient = new PrismaClient();
+    // Bumpeamos el connection_limit del pool a 20 (default Prisma ≈ 9).
+    // Razón: la extensión `audit` escribe en `audit_log` desde una conexión
+    // SEPARADA (vía rawClient), porque la API de query extensions de Prisma
+    // 5.x no expone el tx interactivo a los callbacks (getExtensionContext
+    // es función identidad; $parent solo es type-hint en compile time).
+    // Como cada operación auditada dentro de una tx interactiva consume 2
+    // conexiones simultáneas (1 retenida por la tx + 1 para el audit), el
+    // default se agotaba con ~5 tx concurrentes (timeout P2024). Lo dejamos
+    // en 20 como margen razonable hasta que se rework la auditoría con
+    // AsyncLocalStorage para que el insert al audit_log corra dentro de la
+    // misma conexión de la tx (refactor mayor, fuera de scope acá).
+    this.rawClient = new PrismaClient({
+      datasourceUrl: appendConnectionLimit(process.env.DATABASE_URL, 20),
+    });
   }
 
   async onModuleInit(): Promise<void> {
