@@ -382,16 +382,18 @@ describe('Productos (HU-7.1)', () => {
   });
 
   describe('SKU automático — concurrencia (PR-39)', () => {
-    it('5 create concurrentes en la misma empresa producen 5 SKUs únicos sin gaps', async () => {
-      // 5 creates concurrentes son suficientes para probar la atomicidad del
-      // SKU (UPDATE ... RETURNING bajo row-lock); 10 saturaba el pool default
-      // de Prisma en testcontainers. Llamamos al service directamente para
-      // capturar errores que el filtro 500 de Nest ocultaría.
+    it('15 create concurrentes en la misma empresa producen 15 SKUs únicos sin gaps', async () => {
+      // Tras el follow-up del PR-39 (reserveProductSku en autocommit, fuera
+      // de la tx interactiva), 15 creates concurrentes ya no saturan el pool.
+      // Antes esto fallaba con P2024 (timeout fetching connection) porque
+      // cada tx retenía 2 conexiones simultáneas (la tx + el audit_log
+      // write desde rawClient). Llamamos al service directo para que las
+      // excepciones se vean en el test, no escondidas tras un 500 de Nest.
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { ProductsService } = require('../../src/products/products.service');
       const svc = tc.app.get(ProductsService) as InstanceType<typeof ProductsService>;
       const uomId = BigInt(fx.uomGlobalId);
-      const N = 5;
+      const N = 15;
       const results = await Promise.allSettled(
         Array.from({ length: N }, (_, i) =>
           svc.create(fx.companyAId, {
@@ -415,14 +417,7 @@ describe('Productos (HU-7.1)', () => {
         ),
       );
       const rejected = results.filter((r) => r.status === 'rejected');
-      if (rejected.length > 0) {
-        // eslint-disable-next-line no-console
-        console.error(
-          'DEBUG concurrent rejections:',
-          rejected.map((r) => (r as PromiseRejectedResult).reason),
-        );
-      }
-      expect(rejected).toHaveLength(0);
+      expect(rejected).toEqual([]);
 
       const skus = (results as PromiseFulfilledResult<{ sku: string }>[]).map((r) => r.value.sku);
       const unique = new Set(skus);
