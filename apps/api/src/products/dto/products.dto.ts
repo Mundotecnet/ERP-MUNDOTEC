@@ -3,8 +3,10 @@ import { BadRequestException } from '@nestjs/common';
 export const TRACKING_TYPES = ['NONE', 'SERIAL', 'LOT'] as const;
 export type TrackingType = (typeof TRACKING_TYPES)[number];
 
+// PR-39 — SKU es automático: nunca viene del cliente. Si llega, se ignora.
+// El service lo asigna desde document_sequence(PRODUCT_SKU) atómicamente.
 export interface CreateProductBody {
-  sku?: unknown;
+  // sku?: unknown   // ← deliberadamente NO se acepta
   barcode?: unknown;
   name?: unknown;
   description?: unknown;
@@ -24,7 +26,6 @@ export interface CreateProductBody {
 }
 
 export interface ParsedCreateProduct {
-  sku: string;
   barcode: string | null;
   name: string;
   description: string | null;
@@ -46,7 +47,8 @@ export interface ParsedCreateProduct {
 export type UpdateProductBody = CreateProductBody;
 
 export interface ParsedUpdateProduct {
-  sku?: string;
+  // sku no se modifica vía PATCH; el cliente nunca lo manda y el service no
+  // lo respeta aunque llegue.
   barcode?: string | null;
   name?: string;
   description?: string | null;
@@ -187,7 +189,6 @@ function optionalCurrencyCode(value: unknown, name: string): string | undefined 
 
 export function parseCreateProductBody(body: CreateProductBody): ParsedCreateProduct {
   return {
-    sku: requireString(body.sku, 'sku', 60),
     barcode: nullableString(body.barcode, 'barcode', 60),
     name: requireString(body.name, 'name', 200),
     description:
@@ -217,8 +218,7 @@ export function parseCreateProductBody(body: CreateProductBody): ParsedCreatePro
 
 export function parseUpdateProductBody(body: UpdateProductBody): ParsedUpdateProduct {
   const out: ParsedUpdateProduct = {};
-  const sku = optionalString(body.sku, 'sku', 60);
-  if (sku !== undefined) out.sku = sku;
+  // PR-39: si el cliente envía sku en el body se ignora silenciosamente.
   if (body.barcode !== undefined) out.barcode = nullableString(body.barcode, 'barcode', 60);
   const name = optionalString(body.name, 'name', 200);
   if (name !== undefined) out.name = name;

@@ -59,8 +59,11 @@ const TRACKING_TYPES = ['NONE', 'SERIAL', 'LOT'] as const;
 // Schema de la pestaña "General" — los campos de precio (costo, margen,
 // precio, margen mínimo, moneda) viven exclusivamente en la pestaña "Precios"
 // y se manejan vía PATCH /products/:id/pricing.
+//
+// PR-39 — el SKU se asigna automáticamente en el server (autocorrelativo por
+// empresa, arranca en 100000). En la UI es read-only siempre: el usuario no
+// lo tipea ni en creación ni en edición.
 const productSchema = z.object({
-  sku: z.string().min(1, 'Requerido').max(60),
   name: z.string().min(1, 'Requerido').max(200),
   barcode: z.string().max(60).optional(),
   description: z.string().optional(),
@@ -77,7 +80,6 @@ type ProductFormValues = z.infer<typeof productSchema>;
 
 function emptyForm(): ProductFormValues {
   return {
-    sku: '',
     name: '',
     barcode: '',
     description: '',
@@ -94,7 +96,6 @@ function emptyForm(): ProductFormValues {
 
 function productToForm(p: Product): ProductFormValues {
   return {
-    sku: p.sku,
     name: p.name,
     barcode: p.barcode ?? '',
     description: p.description ?? '',
@@ -110,7 +111,6 @@ function productToForm(p: Product): ProductFormValues {
 }
 
 interface ApiPayload {
-  sku: string;
   name: string;
   barcode: string | null;
   description: string | null;
@@ -126,7 +126,6 @@ interface ApiPayload {
 
 function formToPayload(v: ProductFormValues): ApiPayload {
   return {
-    sku: v.sku,
     name: v.name,
     barcode: v.barcode?.trim() ? v.barcode.trim() : null,
     description: v.description?.trim() ? v.description.trim() : null,
@@ -278,6 +277,7 @@ export function ProductsPage(): JSX.Element {
           mode={creating ? 'create' : 'edit'}
           initial={editing ? productToForm(editing) : emptyForm()}
           productId={editing?.id ?? null}
+          currentSku={editing?.sku ?? null}
           categories={categoriesQ.data ?? []}
           uoms={uomsQ.data ?? []}
           taxes={taxesQ.data ?? []}
@@ -293,6 +293,8 @@ interface ProductDialogProps {
   mode: 'create' | 'edit';
   initial: ProductFormValues;
   productId: string | null;
+  /** SKU auto-asignado por el server (null en modo creación, antes de guardar). */
+  currentSku: string | null;
   categories: Category[];
   uoms: Uom[];
   taxes: Tax[];
@@ -381,8 +383,15 @@ function ProductDialog(props: ProductDialogProps): JSX.Element {
               onSubmit={handleSubmit((v) => mutation.mutate(v))}
               noValidate
             >
-              <Field label="SKU" htmlFor="sku" error={errors.sku?.message}>
-                <Input id="sku" {...register('sku')} />
+              <Field label="SKU" htmlFor="sku">
+                {/* PR-39: SKU es auto-asignado por el server. Read-only siempre. */}
+                <Input
+                  id="sku"
+                  readOnly
+                  disabled
+                  value={props.currentSku ?? ''}
+                  placeholder={props.mode === 'create' ? 'Se asignará automáticamente' : ''}
+                />
               </Field>
               <Field label="Nombre" htmlFor="name" error={errors.name?.message}>
                 <Input id="name" {...register('name')} />
