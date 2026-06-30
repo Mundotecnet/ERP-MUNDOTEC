@@ -60,7 +60,17 @@ export class DepartmentsService {
   async remove(companyId: bigint, id: bigint): Promise<void> {
     const existing = await this.prisma.raw.department.findFirst({ where: { id, companyId } });
     if (!existing) throw new NotFoundException('Departamento no encontrado.');
-    await this.prisma.client.department.delete({ where: { id: existing.id } });
+    try {
+      await this.prisma.client.department.delete({ where: { id: existing.id } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        throw new ConflictException(
+          `No se puede eliminar el departamento "${existing.name}": está referenciado por productos. ` +
+            'Considere marcarlo como inactivo en su lugar.',
+        );
+      }
+      throw err;
+    }
   }
 
   private translateUniqueViolation(err: unknown): void {

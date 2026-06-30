@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -44,7 +44,17 @@ export class TaxesService {
   async remove(companyId: bigint, id: bigint): Promise<void> {
     const existing = await this.prisma.raw.tax.findFirst({ where: { id, companyId } });
     if (!existing) throw new NotFoundException('Impuesto no encontrado.');
-    await this.prisma.client.tax.delete({ where: { id: existing.id } });
+    try {
+      await this.prisma.client.tax.delete({ where: { id: existing.id } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        throw new ConflictException(
+          `No se puede eliminar el impuesto "${existing.name}": está referenciado por productos. ` +
+            'Considere marcarlo como inactivo en su lugar.',
+        );
+      }
+      throw err;
+    }
   }
 
   private toView(row: {

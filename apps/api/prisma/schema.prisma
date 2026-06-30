@@ -273,9 +273,11 @@ model PasswordResetToken {
 // ============================================================================
 
 model Currency {
-  code   String  @id @db.Char(3)
-  name   String  @db.VarChar(60)
-  symbol String? @db.VarChar(6)
+  code     String  @id @db.Char(3)
+  name     String  @db.VarChar(60)
+  symbol   String? @db.VarChar(6)
+  decimals Int     @default(2)
+  isActive Boolean @default(true) @map("is_active")
 
   exchangeRates ExchangeRate[]
   priceLists    PriceList[]
@@ -309,9 +311,10 @@ model Tax {
 }
 
 model UnitOfMeasure {
-  id   BigInt @id @default(autoincrement())
-  code String @unique @db.VarChar(10)
-  name String @db.VarChar(60)
+  id       BigInt  @id @default(autoincrement())
+  code     String  @unique @db.VarChar(10)
+  name     String  @db.VarChar(60)
+  isActive Boolean @default(true) @map("is_active")
 
   products Product[]
 

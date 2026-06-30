@@ -8,6 +8,14 @@ export interface UomView {
   id: string;
   code: string;
   name: string;
+  isActive: boolean;
+}
+
+interface UomRow {
+  id: bigint;
+  code: string;
+  name: string;
+  isActive: boolean;
 }
 
 @Injectable()
@@ -50,7 +58,17 @@ export class UnitsOfMeasureService {
   async remove(id: bigint): Promise<void> {
     const existing = await this.prisma.raw.unitOfMeasure.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Unidad de medida no encontrada.');
-    await this.prisma.raw.unitOfMeasure.delete({ where: { id } });
+    try {
+      await this.prisma.raw.unitOfMeasure.delete({ where: { id } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        throw new ConflictException(
+          `No se puede eliminar la unidad ${existing.code}: está referenciada por productos. ` +
+            'Considere marcarla como inactiva en su lugar.',
+        );
+      }
+      throw err;
+    }
   }
 
   private translateUniqueViolation(err: unknown): void {
@@ -59,7 +77,7 @@ export class UnitsOfMeasureService {
     }
   }
 
-  private toView(row: { id: bigint; code: string; name: string }): UomView {
-    return { id: row.id.toString(), code: row.code, name: row.name };
+  private toView(row: UomRow): UomView {
+    return { id: row.id.toString(), code: row.code, name: row.name, isActive: row.isActive };
   }
 }

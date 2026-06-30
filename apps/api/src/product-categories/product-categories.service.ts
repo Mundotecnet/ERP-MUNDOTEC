@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -83,7 +84,17 @@ export class ProductCategoriesService {
           'Reasigna o elimina las subcategorías primero.',
       );
     }
-    await this.prisma.client.productCategory.delete({ where: { id: existing.id } });
+    try {
+      await this.prisma.client.productCategory.delete({ where: { id: existing.id } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        throw new ConflictException(
+          `No se puede eliminar la categoría "${existing.name}": está referenciada por productos. ` +
+            'Considere marcarla como inactiva en su lugar.',
+        );
+      }
+      throw err;
+    }
   }
 
   private async assertParentInCompany(companyId: bigint, parentId: bigint): Promise<void> {
