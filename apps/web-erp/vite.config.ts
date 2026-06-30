@@ -27,5 +27,13 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
     css: false,
+    // El default (5 s) era ajustado para tests que disparan muchas
+    // interacciones `userEvent.type/click` seguidas en jsdom. Bajo carga
+    // concurrente de CPU (el pre-push corre build + lint + typecheck antes
+    // de los tests; CI hace algo similar) el thread de Node se ralentiza
+    // lo suficiente como para que cadenas de ~10 interacciones excedan los
+    // 5 s. 15 s da margen ~3x sin enmascarar tests genuinamente lentos.
+    testTimeout: 15_000,
+    hookTimeout: 15_000,
   },
 });
