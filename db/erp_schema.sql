@@ -1580,6 +1580,22 @@ ALTER TABLE service_order
     ADD COLUMN location VARCHAR(150),
     ADD COLUMN technician_commission_pct NUMERIC(7,4) NOT NULL DEFAULT 0;
 
+-- --- 20.6 Multi-sucursal por usuario --------------------------------------
+-- El usuario opera N sucursales (una es la default). Admins/owners con el
+-- permiso `branch.access_all` operan todas sin necesidad de asignación
+-- explícita. `default_branch_id` puede quedar NULL cuando la default queda
+-- fuera de las permitidas al recortar el set (auto-null en la misma tx).
+ALTER TABLE app_user
+    ADD COLUMN default_branch_id BIGINT REFERENCES branch(id);
+
+CREATE TABLE user_branch (
+    user_id     BIGINT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+    branch_id   BIGINT NOT NULL REFERENCES branch(id)   ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, branch_id)
+);
+CREATE INDEX idx_user_branch_branch ON user_branch(branch_id);
+
 -- ============================================================================
 -- 21. CANAL WEB — DATOS PROPIOS DE LA TIENDA
 -- ============================================================================
