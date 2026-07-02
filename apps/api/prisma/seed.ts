@@ -39,6 +39,12 @@ const PERMISSIONS: PermissionSpec[] = [
   { code: 'branch.create', module: 'branch', description: 'Crear sucursales' },
   { code: 'branch.update', module: 'branch', description: 'Editar sucursales' },
   { code: 'branch.delete', module: 'branch', description: 'Desactivar/borrar sucursales' },
+  {
+    code: 'branch.access_all',
+    module: 'branch',
+    description:
+      'Operar TODAS las sucursales de la empresa sin necesidad de asignación explícita (admin/owner).',
+  },
 
   // --- Almacenes ---
   { code: 'warehouses.read', module: 'warehouses', description: 'Listar y ver almacenes' },

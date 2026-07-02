@@ -8,6 +8,7 @@ export interface CreateUserBody {
   isActive?: unknown;
   isSalesperson?: unknown;
   commissionPct?: unknown;
+  defaultBranchId?: unknown;
 }
 
 export interface ParsedCreateUser {
@@ -18,6 +19,7 @@ export interface ParsedCreateUser {
   isActive: boolean;
   isSalesperson: boolean;
   commissionPct: string;
+  defaultBranchId: bigint | null;
 }
 
 export interface UpdateUserBody {
@@ -28,6 +30,7 @@ export interface UpdateUserBody {
   isActive?: unknown;
   isSalesperson?: unknown;
   commissionPct?: unknown;
+  defaultBranchId?: unknown;
 }
 
 export interface ParsedUpdateUser {
@@ -38,6 +41,8 @@ export interface ParsedUpdateUser {
   isActive?: boolean;
   isSalesperson?: boolean;
   commissionPct?: string;
+  /** undefined = no se toca; null = quitar default; bigint = setear. */
+  defaultBranchId?: bigint | null;
 }
 
 export interface ListUsersQuery {
@@ -114,6 +119,23 @@ function optionalCommissionPct(value: unknown, name: string): string | undefined
   return asCommissionPct(value, name);
 }
 
+function asBigId(value: unknown, name: string): bigint {
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    throw new BadRequestException(`Campo "${name}" debe ser string o number.`);
+  }
+  try {
+    return BigInt(value);
+  } catch {
+    throw new BadRequestException(`Campo "${name}" no es un número válido.`);
+  }
+}
+
+/** null (o valor null en el JSON) → limpiar; undefined → no tocar; otro → parsear. */
+function nullableBigId(value: unknown, name: string): bigint | null {
+  if (value === null) return null;
+  return asBigId(value, name);
+}
+
 export function parseCreateUserBody(body: CreateUserBody): ParsedCreateUser {
   return {
     username: requireString(body.username, 'username', 80),
@@ -127,6 +149,10 @@ export function parseCreateUserBody(body: CreateUserBody): ParsedCreateUser {
       body.commissionPct === undefined
         ? '0.0000'
         : asCommissionPct(body.commissionPct, 'commissionPct'),
+    defaultBranchId:
+      body.defaultBranchId === undefined
+        ? null
+        : nullableBigId(body.defaultBranchId, 'defaultBranchId'),
   };
 }
 
@@ -146,6 +172,9 @@ export function parseUpdateUserBody(body: UpdateUserBody): ParsedUpdateUser {
   if (isSalesperson !== undefined) out.isSalesperson = isSalesperson;
   const commissionPct = optionalCommissionPct(body.commissionPct, 'commissionPct');
   if (commissionPct !== undefined) out.commissionPct = commissionPct;
+  if (body.defaultBranchId !== undefined) {
+    out.defaultBranchId = nullableBigId(body.defaultBranchId, 'defaultBranchId');
+  }
   if (Object.keys(out).length === 0) {
     throw new BadRequestException('No se recibió ningún campo a actualizar.');
   }
@@ -177,6 +206,42 @@ export function parseListUsersQuery(q: ListUsersQuery): ParsedListUsers {
   if (isSalesperson !== undefined) out.isSalesperson = isSalesperson;
   const isActive = flagFromQuery(q.isActive, 'isActive');
   if (isActive !== undefined) out.isActive = isActive;
+  return out;
+}
+
+export interface ReplaceUserBranchesBody {
+  branchIds?: unknown;
+  defaultBranchId?: unknown;
+}
+
+export interface ParsedReplaceUserBranches {
+  branchIds: bigint[];
+  /** undefined = no se toca; null = quitar default; bigint = setear. */
+  defaultBranchId?: bigint | null;
+}
+
+export function parseReplaceUserBranches(body: ReplaceUserBranchesBody): ParsedReplaceUserBranches {
+  if (!Array.isArray(body.branchIds)) {
+    throw new BadRequestException('Campo "branchIds" debe ser un arreglo.');
+  }
+  const ids: bigint[] = [];
+  for (const item of body.branchIds) {
+    ids.push(asBigId(item, 'branchIds[]'));
+  }
+  // Deduplicar manteniendo el orden de la primera aparición.
+  const seen = new Set<string>();
+  const branchIds: bigint[] = [];
+  for (const id of ids) {
+    const key = id.toString();
+    if (!seen.has(key)) {
+      seen.add(key);
+      branchIds.push(id);
+    }
+  }
+  const out: ParsedReplaceUserBranches = { branchIds };
+  if (body.defaultBranchId !== undefined) {
+    out.defaultBranchId = nullableBigId(body.defaultBranchId, 'defaultBranchId');
+  }
   return out;
 }
 

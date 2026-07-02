@@ -82,6 +82,8 @@ model Branch {
   quotations     Quotation[]
   salesOrders    SalesOrder[]
   invoices       Invoice[]
+  usersDefaulted AppUser[]       @relation("UserDefaultBranch")
+  userBranches   UserBranch[]
 
   @@unique([companyId, code])
   @@map("branch")
@@ -123,8 +125,12 @@ model AppUser {
   // Extensión sección 20.1 del erp_schema.sql (vendedores y comisiones).
   isSalesperson       Boolean   @default(false) @map("is_salesperson")
   commissionPct       Decimal   @default(0) @map("commission_pct") @db.Decimal(7, 4)
+  // Extensión sección 20.6: multi-sucursal por usuario.
+  defaultBranchId     BigInt?   @map("default_branch_id")
 
   company             Company              @relation(fields: [companyId], references: [id])
+  defaultBranch       Branch?              @relation("UserDefaultBranch", fields: [defaultBranchId], references: [id])
+  userBranches        UserBranch[]
   userRoles           UserRole[]
   auditLogs           AuditLog[]
   refreshTokens       RefreshToken[]
@@ -143,6 +149,19 @@ model AppUser {
   @@unique([companyId, username])
   @@unique([companyId, email])
   @@map("app_user")
+}
+
+model UserBranch {
+  userId    BigInt   @map("user_id")
+  branchId  BigInt   @map("branch_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user   AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@id([userId, branchId])
+  @@index([branchId])
+  @@map("user_branch")
 }
 
 model Role {

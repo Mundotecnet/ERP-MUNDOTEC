@@ -21,12 +21,14 @@ import {
   ListUsersQuery,
   parseCreateUserBody,
   parseListUsersQuery,
+  parseReplaceUserBranches,
   parseReplaceUserRoles,
   parseUpdateUserBody,
+  ReplaceUserBranchesBody,
   ReplaceUserRolesBody,
   UpdateUserBody,
 } from './dto/users.dto';
-import { PaginatedUsers, UsersService, UserView } from './users.service';
+import { PaginatedUsers, UserBranchesView, UsersService, UserView } from './users.service';
 
 function parseBigIntParam(value: string, name: string): bigint {
   try {
@@ -50,10 +52,30 @@ export class UsersController {
     return this.svc.list(user.companyId, parseListUsersQuery(query));
   }
 
+  /**
+   * Sucursales operables por el usuario logueado (útil para inyectar en
+   * cabeceras/estado del cliente). Con `branch.access_all` devuelve todas
+   * las activas de la empresa. Sin ese permiso, las de `user_branch`.
+   */
+  @Get('me/branches')
+  @RequirePermission('branch.read')
+  async myBranches(@CurrentUser() user: AuthUserContext): Promise<UserBranchesView> {
+    return this.svc.getBranchesFor(user.companyId, user.userId);
+  }
+
   @Get(':id')
   @RequirePermission('users.read')
   async getOne(@CurrentUser() user: AuthUserContext, @Param('id') id: string): Promise<UserView> {
     return this.svc.getOne(user.companyId, parseBigIntParam(id, 'id'));
+  }
+
+  @Get(':id/branches')
+  @RequirePermission('users.read')
+  async userBranches(
+    @CurrentUser() user: AuthUserContext,
+    @Param('id') id: string,
+  ): Promise<UserBranchesView> {
+    return this.svc.getBranchesFor(user.companyId, parseBigIntParam(id, 'id'));
   }
 
   @Post()
@@ -97,5 +119,25 @@ export class UsersController {
   ): Promise<UserView> {
     const roleIds = parseReplaceUserRoles(body);
     return this.svc.replaceRoles(user.companyId, parseBigIntParam(id, 'id'), roleIds);
+  }
+
+  /**
+   * Reemplaza el conjunto de sucursales asignadas al usuario y (opcional) el
+   * defaultBranchId. Reutiliza el permiso `users.update` para no explotar la
+   * matriz RBAC — quien puede editar el usuario también puede reasignarle
+   * sucursales.
+   */
+  @Put(':id/branches')
+  @RequirePermission('users.update')
+  async replaceBranches(
+    @CurrentUser() user: AuthUserContext,
+    @Param('id') id: string,
+    @Body() body: ReplaceUserBranchesBody,
+  ): Promise<UserBranchesView> {
+    return this.svc.replaceBranches(
+      user.companyId,
+      parseBigIntParam(id, 'id'),
+      parseReplaceUserBranches(body),
+    );
   }
 }
