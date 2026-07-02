@@ -102,7 +102,14 @@ export default function App(): JSX.Element {
               </ProtectedRoute>
             }
           />
-          <Route path="branches" element={<BranchesPage />} />
+          <Route
+            path="branches"
+            element={
+              <ProtectedRoute permission="branch.read">
+                <BranchesPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="users" element={<UsersPage />} />
           <Route path="roles" element={<RolesPage />} />
           <Route

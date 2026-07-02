@@ -56,16 +56,53 @@ export class BranchesService {
   async remove(companyId: bigint, id: bigint): Promise<void> {
     const existing = await this.prisma.raw.branch.findFirst({
       where: { id, companyId },
-      include: { _count: { select: { warehouses: true } } },
+      include: {
+        _count: {
+          select: {
+            warehouses: true,
+            purchaseOrders: true,
+            quotations: true,
+            salesOrders: true,
+            invoices: true,
+            userBranches: true,
+            usersDefaulted: true,
+          },
+        },
+      },
     });
     if (!existing) throw new NotFoundException('Sucursal no encontrada.');
-    if (existing._count.warehouses > 0) {
+
+    // Verificación explícita ANTES del DELETE — mensaje accionable.
+    // El fallback P2003 más abajo cubre cualquier FK que se agregue en el
+    // futuro y no esté enumerada acá.
+    const uses: Array<[number, string]> = [
+      [existing._count.warehouses, 'almacén(es)'],
+      [existing._count.purchaseOrders, 'orden(es) de compra'],
+      [existing._count.quotations, 'cotización(es)'],
+      [existing._count.salesOrders, 'orden(es) de venta'],
+      [existing._count.invoices, 'factura(s)'],
+      [existing._count.userBranches, 'asignación(es) a usuarios'],
+      [existing._count.usersDefaulted, 'usuario(s) con esta sucursal por defecto'],
+    ];
+    const inUse = uses.filter(([count]) => count > 0);
+    if (inUse.length > 0) {
       throw new ConflictException(
-        'No se puede eliminar la sucursal porque tiene almacenes asociados. ' +
-          'Reasigna o elimina los almacenes primero.',
+        `No se puede eliminar la sucursal "${existing.code} — ${existing.name}": está en uso por ` +
+          inUse.map(([count, label]) => `${count} ${label}`).join(', ') +
+          '. Considere marcarla como inactiva en su lugar.',
       );
     }
-    await this.prisma.client.branch.delete({ where: { id: existing.id } });
+    try {
+      await this.prisma.client.branch.delete({ where: { id: existing.id } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        throw new ConflictException(
+          `No se puede eliminar la sucursal "${existing.code} — ${existing.name}": está referenciada por otra entidad. ` +
+            'Considere marcarla como inactiva en su lugar.',
+        );
+      }
+      throw err;
+    }
   }
 
   private translateUniqueViolation(err: unknown): void {
